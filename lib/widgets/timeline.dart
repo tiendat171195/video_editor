@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 import '../models/annotation.dart';
 
 /// Scrubbable timeline showing note time windows and slow-mo ranges.
-class NoteTimeline extends StatelessWidget {
+///
+/// Dragging is relative to where the finger went down, and gets finer the
+/// further the finger moves away from the bar vertically (like precise
+/// seeking in video apps): 1x near the bar, 1/4 a bit away, 1/10 far away.
+class NoteTimeline extends StatefulWidget {
   const NoteTimeline({
     super.key,
     required this.durationMs,
@@ -12,8 +16,10 @@ class NoteTimeline extends StatelessWidget {
     required this.slowMos,
     required this.onSeek,
     this.pendingSlowMoStartMs,
+    this.selectedId,
     this.onSeekStart,
     this.onSeekEnd,
+    this.onPrecisionChanged,
   });
 
   final int durationMs;
@@ -21,31 +27,68 @@ class NoteTimeline extends StatelessWidget {
   final List<Annotation> annotations;
   final List<SlowMoSegment> slowMos;
   final int? pendingSlowMoStartMs;
+  final String? selectedId;
   final ValueChanged<int> onSeek;
   final VoidCallback? onSeekStart;
   final VoidCallback? onSeekEnd;
 
+  /// Reports the current scrub precision (1, 0.25, 0.1) while dragging.
+  final ValueChanged<double>? onPrecisionChanged;
+
+  static const height = 64.0;
+
+  @override
+  State<NoteTimeline> createState() => _NoteTimelineState();
+}
+
+class _NoteTimelineState extends State<NoteTimeline> {
+  double _scrubMs = 0;
+  double _precision = 1;
+
+  double _precisionFor(double dy) {
+    final away = (dy - NoteTimeline.height / 2).abs();
+    if (away < 60) return 1;
+    if (away < 150) return 0.25;
+    return 0.1;
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, c) {
-      int toMs(double dx) => durationMs <= 0 ? 0 : (dx / c.maxWidth * durationMs).round().clamp(0, durationMs);
+      final w = c.maxWidth;
+      final d = widget.durationMs;
+      int toMs(double dx) => d <= 0 ? 0 : (dx / w * d).round().clamp(0, d);
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTapDown: (d) => onSeek(toMs(d.localPosition.dx)),
-        onHorizontalDragStart: (d) {
-          onSeekStart?.call();
-          onSeek(toMs(d.localPosition.dx));
+        onTapDown: (e) => widget.onSeek(toMs(e.localPosition.dx)),
+        onPanStart: (e) {
+          widget.onSeekStart?.call();
+          _scrubMs = toMs(e.localPosition.dx).toDouble();
+          _precision = 1;
+          widget.onPrecisionChanged?.call(1);
+          widget.onSeek(_scrubMs.round());
         },
-        onHorizontalDragUpdate: (d) => onSeek(toMs(d.localPosition.dx)),
-        onHorizontalDragEnd: (_) => onSeekEnd?.call(),
+        onPanUpdate: (e) {
+          final p = _precisionFor(e.localPosition.dy);
+          if (p != _precision) {
+            _precision = p;
+            widget.onPrecisionChanged?.call(p);
+          }
+          if (d <= 0) return;
+          _scrubMs = (_scrubMs + e.delta.dx / w * d * p).clamp(0, d.toDouble());
+          widget.onSeek(_scrubMs.round());
+        },
+        onPanEnd: (_) => widget.onSeekEnd?.call(),
+        onPanCancel: () => widget.onSeekEnd?.call(),
         child: CustomPaint(
-          size: Size(c.maxWidth, 56),
+          size: Size(w, NoteTimeline.height),
           painter: _TimelinePainter(
-            durationMs: durationMs,
-            positionMs: positionMs,
-            annotations: annotations,
-            slowMos: slowMos,
-            pendingSlowMoStartMs: pendingSlowMoStartMs,
+            durationMs: d,
+            positionMs: widget.positionMs,
+            annotations: widget.annotations,
+            slowMos: widget.slowMos,
+            pendingSlowMoStartMs: widget.pendingSlowMoStartMs,
+            selectedId: widget.selectedId,
             trackColor: Theme.of(context).colorScheme.surfaceContainerHighest,
             playheadColor: Theme.of(context).colorScheme.primary,
           ),
@@ -62,6 +105,7 @@ class _TimelinePainter extends CustomPainter {
     required this.annotations,
     required this.slowMos,
     required this.pendingSlowMoStartMs,
+    required this.selectedId,
     required this.trackColor,
     required this.playheadColor,
   });
@@ -71,6 +115,7 @@ class _TimelinePainter extends CustomPainter {
   final List<Annotation> annotations;
   final List<SlowMoSegment> slowMos;
   final int? pendingSlowMoStartMs;
+  final String? selectedId;
   final Color trackColor;
   final Color playheadColor;
 
@@ -115,6 +160,15 @@ class _TimelinePainter extends CustomPainter {
       laneEnd[lane] = a.endMs;
       final r = Rect.fromLTRB(x(a.startMs), laneTop + lane * (laneH + 2), x(a.endMs).clamp(x(a.startMs) + 3, size.width), laneTop + lane * (laneH + 2) + laneH);
       canvas.drawRRect(RRect.fromRectAndRadius(r, const Radius.circular(2)), Paint()..color = Color(a.color));
+      if (a.id == selectedId) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(r.inflate(1.5), const Radius.circular(3)),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5
+            ..color = playheadColor,
+        );
+      }
     }
 
     // Playhead

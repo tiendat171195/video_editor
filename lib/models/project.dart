@@ -7,6 +7,7 @@ class VideoProject {
     required this.videoPath,
     required this.name,
     this.durationMs = 0,
+    this.folder,
     List<Annotation>? annotations,
     List<SlowMoSegment>? slowMos,
     DateTime? updatedAt,
@@ -18,6 +19,9 @@ class VideoProject {
   final String videoPath;
   String name;
   int durationMs;
+
+  /// Name of the folder the project is filed under; null = top level.
+  String? folder;
   final List<Annotation> annotations;
   final List<SlowMoSegment> slowMos;
   DateTime updatedAt;
@@ -85,6 +89,7 @@ class VideoProject {
         'videoPath': videoPath,
         'name': name,
         'durationMs': durationMs,
+        if (folder != null) 'folder': folder,
         'updatedAt': updatedAt.toIso8601String(),
         'annotations': [for (final a in annotations) a.toJson()],
         'slowMos': [for (final s in slowMos) s.toJson()],
@@ -95,6 +100,7 @@ class VideoProject {
         videoPath: json['videoPath'] as String,
         name: json['name'] as String,
         durationMs: json['durationMs'] as int? ?? 0,
+        folder: json['folder'] as String?,
         updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? ''),
         annotations: [
           for (final a in json['annotations'] as List? ?? const [])

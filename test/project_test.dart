@@ -73,4 +73,34 @@ void main() {
     expect(info.fps!, closeTo(29.97, 0.01));
     expect(info.hasAudio, isTrue);
   });
+
+  test('reveal and fade-out timing', () {
+    final a = note(1000, 3000)..revealMs = 500;
+    expect(a.revealAt(1000), 0);
+    expect(a.revealAt(1250), 0.5);
+    expect(a.revealAt(2000), 1);
+    expect(a.opacityAt(2000), 1);
+    expect(a.opacityAt(3875), closeTo(0.5, 0.01));
+    expect((note(0, 400)..revealMs = 0).fadeOutMs, 0, reason: 'too short to fade');
+  });
+
+  test('translate keeps the whole note inside the frame', () {
+    final a = Annotation(
+      id: 'r',
+      type: AnnotationType.rect,
+      startMs: 0,
+      durationMs: 1000,
+      color: 0,
+      points: [const Offset(0.6, 0.6), const Offset(0.9, 0.8)],
+    );
+    a.translate(const Offset(0.5, -0.1));
+    expect(a.points.last.dx, closeTo(1.0, 1e-9));
+    expect(a.points.first.dx, closeTo(0.7, 1e-9), reason: 'shape not squashed');
+    expect(a.points.first.dy, closeTo(0.5, 1e-9));
+  });
+
+  test('folder survives json', () {
+    final p = VideoProject(id: 'p', videoPath: '/v.mp4', name: 'v', folder: 'Trận 1');
+    expect(VideoProject.fromJson(jsonDecode(jsonEncode(p.toJson())) as Map<String, dynamic>).folder, 'Trận 1');
+  });
 }

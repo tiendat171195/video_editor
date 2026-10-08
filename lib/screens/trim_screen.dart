@@ -108,7 +108,7 @@ class _TrimScreenState extends State<TrimScreen> {
       path: path,
       sourceSizeBytes: widget.info?.sizeBytes,
       onOpenInEditor: () {
-        final project = projectForOutput(path, annotations: carry?.annotations, slowMos: carry?.slowMos);
+        final project = projectForOutput(path, annotations: carry?.annotations, slowMos: carry?.slowMos, folder: p.folder);
         Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => EditorScreen(project: project)));
       },
     );

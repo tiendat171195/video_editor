@@ -79,17 +79,25 @@ void main() {
       expect(atempoChain(0.75), 'atempo=0.75');
     });
 
-    test('overlays only', () {
+    test('overlays hold the last frame, fade out and start on time', () {
       final args = buildExportArgs(
         input: 'in.mp4',
         output: 'out.mp4',
-        overlays: const [OverlayImage(path: 'a.png', x: 10, y: 20, startMs: 1000, endMs: 4000)],
+        overlays: const [
+          OverlayImage(path: 'a_%03d.png', x: 10, y: 20, startMs: 1000, endMs: 4000, frameCount: 15, fadeOutMs: 250),
+        ],
         slowMos: const [],
         durationMs: 10000,
         hasAudio: true,
       );
+      expect(args, containsAllInOrder(['-f', 'image2', '-framerate', '30', '-start_number', '0', '-i', 'a_%03d.png']));
       final graph = args[args.indexOf('-filter_complex') + 1];
-      expect(graph, "[0:v][1:v]overlay=10:20:eof_action=repeat:enable='between(t,1.000,4.000)'[vout]");
+      expect(
+        graph,
+        '[1:v]tpad=stop_mode=clone:stop_duration=2.500,fade=t=out:st=2.750:d=0.250:alpha=1,'
+        'setpts=PTS-STARTPTS+1.000/TB[on0];'
+        "[0:v][on0]overlay=10:20:eof_action=pass:enable='between(t,1.000,4.000)'[vout]",
+      );
       expect(args, containsAllInOrder(['-map', '[vout]', '-map', '0:a:0']));
     });
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/annotation.dart';
 import '../models/media_info.dart';
 import '../models/project.dart';
 import '../services/ffmpeg_commands.dart';
@@ -119,7 +120,8 @@ class _ConvertScreenState extends State<ConvertScreen> {
               final project = projectForOutput(
                 path,
                 annotations: [for (final a in p.annotations) a.copyWith(id: newId())],
-                slowMos: [for (final s in p.slowMos) s],
+                slowMos: [for (final s in p.slowMos) SlowMoSegment.fromJson(s.toJson())],
+                folder: p.folder,
               );
               Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => EditorScreen(project: project)));
             },

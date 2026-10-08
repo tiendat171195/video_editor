@@ -17,6 +17,7 @@ void main() {
           durationMs: 3000,
           color: 0xFFFF0000,
           points: const [Offset(0.25, 0.25), Offset(0.5, 0.5)],
+          revealMs: 500,
         ),
         Annotation(
           id: 't',
@@ -42,9 +43,14 @@ void main() {
     expect(text.endMs, 5000, reason: 'clamped to video duration');
     expect(text.x, lessThan(640));
     expect(text.y, lessThan(360));
+    expect(ellipse.frameCount, 16, reason: '500ms at 30fps plus the final frame');
+    expect(ellipse.fadeOutMs, 250);
+    expect(text.frameCount, 1, reason: 'no reveal animation');
     for (final o in overlays) {
-      final bytes = File(o.path).readAsBytesSync();
-      expect(bytes.sublist(1, 4), 'PNG'.codeUnits);
+      for (var f = 0; f < o.frameCount; f++) {
+        final bytes = File(o.path.replaceFirst('%03d', f.toString().padLeft(3, '0'))).readAsBytesSync();
+        expect(bytes.sublist(1, 4), 'PNG'.codeUnits);
+      }
     }
   });
 }

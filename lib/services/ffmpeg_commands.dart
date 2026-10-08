@@ -268,7 +268,14 @@ String _num(double v) {
 // Export with burned-in notes and slow motion
 // ---------------------------------------------------------------------------
 
-/// A pre-rendered PNG of one note, placed at ([x], [y]) in video pixels.
+/// Frame rate used to render note appear animations for export.
+const kOverlayFps = 30;
+
+/// One note pre-rendered as a PNG sequence ([path] holds a `%03d` pattern,
+/// frames numbered from 0), placed at ([x], [y]) in video pixels.
+///
+/// The frames play the appear animation; the last frame is then held until
+/// [endMs], fading out over the final [fadeOutMs].
 class OverlayImage {
   const OverlayImage({
     required this.path,
@@ -276,6 +283,8 @@ class OverlayImage {
     required this.y,
     required this.startMs,
     required this.endMs,
+    this.frameCount = 1,
+    this.fadeOutMs = 0,
   });
 
   final String path;
@@ -283,6 +292,8 @@ class OverlayImage {
   final int y;
   final int startMs;
   final int endMs;
+  final int frameCount;
+  final int fadeOutMs;
 }
 
 /// One contiguous range of the output timeline played at [speed].
@@ -339,15 +350,26 @@ List<String> buildExportArgs({
 }) {
   final args = <String>['-y', '-i', input];
   for (final o in overlays) {
-    args.addAll(['-i', o.path]);
+    args.addAll(['-f', 'image2', '-framerate', '$kOverlayFps', '-start_number', '0', '-i', o.path]);
   }
 
   final graph = <String>[];
   var v = '0:v';
   for (var i = 0; i < overlays.length; i++) {
     final o = overlays[i];
+    // Hold the last animation frame for the rest of the window, fade it out,
+    // then shift the clip to start at the note's time.
+    final visibleMs = o.endMs - o.startMs;
+    final animMs = (o.frameCount * 1000 / kOverlayFps).round();
+    final holdMs = visibleMs - animMs;
+    final chain = <String>[
+      if (holdMs > 0) 'tpad=stop_mode=clone:stop_duration=${fmtSec(holdMs)}',
+      if (o.fadeOutMs > 0) 'fade=t=out:st=${fmtSec(visibleMs - o.fadeOutMs)}:d=${fmtSec(o.fadeOutMs)}:alpha=1',
+      'setpts=PTS-STARTPTS+${fmtSec(o.startMs)}/TB',
+    ];
+    graph.add('[${i + 1}:v]${chain.join(',')}[on$i]');
     final next = 'ov$i';
-    graph.add("[$v][${i + 1}:v]overlay=${o.x}:${o.y}:eof_action=repeat:"
+    graph.add("[$v][on$i]overlay=${o.x}:${o.y}:eof_action=pass:"
         "enable='between(t,${fmtSec(o.startMs)},${fmtSec(o.endMs)})'[$next]");
     v = next;
   }

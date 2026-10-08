@@ -96,6 +96,25 @@ class Storage {
     return out;
   }
 
+  // ----- folders (one level; a folder exists if listed here or used by a project)
+
+  static Future<File> _foldersFile() async => File('${(await getApplicationDocumentsDirectory()).path}/folders.json');
+
+  static Future<List<String>> loadFolders() async {
+    final f = await _foldersFile();
+    if (!f.existsSync()) return [];
+    try {
+      return [for (final n in jsonDecode(await f.readAsString()) as List) n as String];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> saveFolders(List<String> names) async {
+    final f = await _foldersFile();
+    await f.writeAsString(jsonEncode(names));
+  }
+
   static Future<void> deleteProject(VideoProject p, {bool deleteVideo = false}) async {
     final dir = await _dir('projects');
     final f = File('${dir.path}/${p.id}.json');

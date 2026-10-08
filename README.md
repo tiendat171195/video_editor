@@ -7,11 +7,18 @@ App ghi chú trực tiếp (real-time) trên video, viết bằng **Flutter**: c
 **Ghi chú khi video đang phát**
 - Vẽ tự do / khoanh vùng, khoanh tròn, khung chữ nhật, mũi tên
 - Gõ note chữ: chọn **T** rồi chạm vào video. Video tự dừng trong lúc gõ và phát tiếp khi xong.
-- Mỗi note chỉ hiện trong vài giây (1–10s, chỉnh được). Note được gắn với thời điểm bạn bắt đầu vẽ.
-- Có thể bật **"Dừng khi vẽ"** nếu muốn video tự dừng lúc đang vẽ.
-- Chọn màu và độ dày nét / cỡ chữ. Có hoàn tác.
-- Danh sách note: chạm để nhảy tới, sửa thời điểm, thời lượng, màu, nội dung, hoặc xoá. Ở công cụ ✋, nhấn giữ một note trên video để sửa nhanh.
-- Timeline hiển thị các note (thanh màu) và đoạn slow-mo (màu cam). Kéo trên timeline để tua.
+- **Hiệu ứng xuất hiện** (bật/tắt bằng chip "Hiệu ứng"): nét vẽ và hình hiện dần theo nét, chữ hiện kiểu gõ phím. Note mờ dần khi hết thời gian. Chỉnh độ dài hiệu ứng cho từng note trong màn Sửa. Video xuất ra có hiệu ứng y hệt.
+- Thời gian hiện: 1–10 giây, hoặc **"Đến khi bấm ẩn"**: note hiện mãi, bạn tua tới chỗ cần ẩn rồi bấm **Ẩn tại đây**.
+- Công cụ ✋:
+  - Chạm vào note để chọn, kéo để **di chuyển** (cả chữ lẫn hình)
+  - Thanh chọn có các nút **Ẩn tại đây**, **Hiện từ đây**, Sửa, Xoá. Note đã chọn vẫn hiện mờ khi tua ra ngoài khoảng thời gian của nó.
+  - Kéo vào chỗ trống trên video để tua
+- **Zoom**: chụm 2 ngón để phóng to tới 6x, vẫn vẽ và gõ chính xác khi đang zoom. Khi đang zoom, kéo 1 ngón vào chỗ trống để di chuyển khung nhìn. Chạm nhãn "x" để về 1x.
+- Hoàn tác / làm lại trên thanh trên cùng, áp dụng cho mọi thao tác. Xuất, Cắt, Chuyển đổi nằm trong nút ⋮.
+- **Tua mượt**: app trích sẵn khung hình độ phân giải thấp ở chế độ nền, nên khi kéo thanh tiến trình, hình chạy theo ngón tay ngay lập tức. Kéo ngón tay xa thanh lên phía trên để tua chậm hơn (×¼, ×⅒). Có nút tiến/lùi từng khung hình.
+- Timeline hiển thị các note (thanh màu) và đoạn slow-mo (màu cam).
+
+**Project & thư mục**: đặt tên khi mở video, đổi tên (bấm vào tiêu đề trong editor hoặc menu ⋮ ở màn chính), tạo thư mục và chuyển project vào đó. Video tạo ra từ một project (cắt, chuyển đổi, xuất) được lưu vào cùng thư mục.
 
 **Slow motion**
 - Bấm **Slow-mo** khi đang phát để bắt đầu đánh dấu, bấm lần nữa để kết thúc đoạn. Chọn tốc độ 0.75x / 0.5x / 0.25x / 0.125x.
@@ -45,6 +52,7 @@ lib/
     media_info.dart        # kết quả ffprobe (kích thước, xoay, fps, codec…)
   services/
     ffmpeg_commands.dart   # dựng lệnh FFmpeg (thuần Dart, có unit test)
+    scrub_frames.dart      # trích khung hình low-res để tua mượt
     ffmpeg_service.dart    # chạy FFmpegKit, tiến độ, huỷ
     overlay_renderer.dart  # vẽ note thành PNG để ghép vào video
     storage.dart           # lưu project, thư mục xuất

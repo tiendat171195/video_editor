@@ -38,6 +38,11 @@ void main() {
     await ff(['-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x240:rate=30:duration=4',
       '-f', 'lavfi', '-i', 'sine=frequency=440:duration=4', '-c:v', 'libx264', '-g', '15', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', src]);
     await ff(['-y', '-f', 'lavfi', '-i', 'color=c=red@0.5:size=60x40,format=rgba', '-frames:v', '1', png]);
+    // A 5-frame "appear animation" sequence.
+    for (var i = 0; i < 5; i++) {
+      await ff(['-y', '-f', 'lavfi', '-i', 'color=c=blue@0.7:size=${20 + i * 10}x40,format=rgba,pad=60:40:0:0:color=black@0',
+        '-frames:v', '1', '${dir.path}/seq_${i.toString().padLeft(3, '0')}.png']);
+    }
   });
 
   tearDownAll(() async {
@@ -78,7 +83,7 @@ void main() {
       output: out,
       overlays: [
         OverlayImage(path: png, x: 10, y: 10, startMs: 0, endMs: 1500),
-        OverlayImage(path: png, x: 200, y: 150, startMs: 2000, endMs: 4000),
+        OverlayImage(path: '${dir.path}/seq_%03d.png', x: 200, y: 150, startMs: 2000, endMs: 4000, frameCount: 5, fadeOutMs: 250),
       ],
       slowMos: slow,
       durationMs: 4000,
