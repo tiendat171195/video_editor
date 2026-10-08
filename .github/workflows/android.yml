@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,7 +28,20 @@ jobs:
       - run: flutter analyze
       - run: flutter test
       - run: flutter build apk --release --split-per-abi
+      - run: mv build/app/outputs/flutter-apk/app-arm64-v8a-release.apk build/app/outputs/flutter-apk/video-note-arm64.apk
       - uses: actions/upload-artifact@v4
         with:
           name: video-note-apk
-          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          path: build/app/outputs/flutter-apk/video-note-arm64.apk
+      - name: Publish APK as a GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Video Note build ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          body: |
+            APK Android (arm64) build từ commit ${{ github.sha }}.
+            Mở link này trên điện thoại, tải `video-note-arm64.apk` và cài.
+          files: build/app/outputs/flutter-apk/video-note-arm64.apk
