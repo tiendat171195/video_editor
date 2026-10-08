@@ -143,27 +143,7 @@ Future<void> showResultSheet(
               const SizedBox(height: 4),
               Text('${path.split('/').last}\n${formatBytes(size)}$ratio', style: Theme.of(ctx).textTheme.bodySmall),
               const SizedBox(height: 16),
-              FilledButton.icon(
-                icon: const Icon(Icons.photo_library_outlined),
-                label: const Text('Lưu vào thư viện ảnh'),
-                onPressed: () async {
-                  final messenger = ScaffoldMessenger.of(ctx);
-                  try {
-                    if (!await Gal.hasAccess() && !await Gal.requestAccess()) {
-                      messenger.showSnackBar(const SnackBar(content: Text('Chưa được cấp quyền thư viện ảnh')));
-                      return;
-                    }
-                    if (isVideo) {
-                      await Gal.putVideo(path, album: 'Video Note');
-                    } else {
-                      await Gal.putImage(path, album: 'Video Note');
-                    }
-                    messenger.showSnackBar(const SnackBar(content: Text('Đã lưu vào thư viện')));
-                  } on GalException catch (e) {
-                    messenger.showSnackBar(SnackBar(content: Text('Không lưu được: ${e.type.message}')));
-                  }
-                },
-              ),
+              _SaveToGalleryButton(path: path, isVideo: isVideo),
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 icon: const Icon(Icons.share_outlined),
@@ -187,4 +167,104 @@ Future<void> showResultSheet(
       );
     },
   );
+}
+
+enum _SaveState { idle, saving, saved, failed }
+
+/// Saves to the gallery and shows the outcome on the button itself: a
+/// SnackBar would be hidden behind the bottom sheet.
+class _SaveToGalleryButton extends StatefulWidget {
+  const _SaveToGalleryButton({required this.path, required this.isVideo});
+  final String path;
+  final bool isVideo;
+
+  @override
+  State<_SaveToGalleryButton> createState() => _SaveToGalleryButtonState();
+}
+
+class _SaveToGalleryButtonState extends State<_SaveToGalleryButton> {
+  _SaveState _state = _SaveState.idle;
+  String? _error;
+
+  Future<void> _save() async {
+    setState(() {
+      _state = _SaveState.saving;
+      _error = null;
+    });
+    try {
+      if (!await Gal.hasAccess() && !await Gal.requestAccess()) {
+        throw const _SaveError('Chưa được cấp quyền truy cập thư viện ảnh');
+      }
+      if (widget.isVideo) {
+        await Gal.putVideo(widget.path, album: 'Video Note');
+      } else {
+        await Gal.putImage(widget.path, album: 'Video Note');
+      }
+      if (mounted) setState(() => _state = _SaveState.saved);
+    } catch (e) {
+      final msg = switch (e) {
+        _SaveError(:final message) => message,
+        GalException(:final type) => type.message,
+        _ => '$e',
+      };
+      if (mounted) {
+        setState(() {
+          _state = _SaveState.failed;
+          _error = msg;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final button = switch (_state) {
+      _SaveState.idle => FilledButton.icon(
+          icon: const Icon(Icons.photo_library_outlined),
+          label: const Text('Lưu vào thư viện ảnh'),
+          onPressed: _save,
+        ),
+      _SaveState.saving => FilledButton.icon(
+          icon: const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+          label: const Text('Đang lưu…'),
+          onPressed: null,
+        ),
+      _SaveState.saved => FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.green.shade600,
+            disabledBackgroundColor: Colors.green.shade600,
+            disabledForegroundColor: Colors.white,
+          ),
+          icon: const Icon(Icons.check_circle),
+          label: const Text('Đã lưu vào thư viện ảnh'),
+          onPressed: null,
+        ),
+      _SaveState.failed => FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: scheme.error, foregroundColor: scheme.onError),
+          icon: const Icon(Icons.refresh),
+          label: const Text('Lưu thất bại, thử lại'),
+          onPressed: _save,
+        ),
+    };
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      button,
+      if (_state == _SaveState.saved)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text('Xem trong Thư viện (Gallery), album "Video Note".',
+              textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+        ),
+      if (_state == _SaveState.failed && _error != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: scheme.error, fontSize: 12)),
+        ),
+    ]);
+  }
+}
+
+class _SaveError implements Exception {
+  const _SaveError(this.message);
+  final String message;
 }
