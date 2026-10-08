@@ -203,61 +203,60 @@ List<String> buildConvertArgs({
             audioKbps: keepAudio ? o.audioKbps : 0,
           );
 
-    switch (o.videoCodec) {
-      case VideoCodec.h264:
-        args.addAll(['-c:v', 'libx264', '-preset', o.fastEncode ? 'veryfast' : 'medium']);
-      case VideoCodec.h265:
-        args.addAll(['-c:v', 'libx265', '-preset', o.fastEncode ? 'veryfast' : 'medium']);
-        if (o.container == OutputFormat.mp4 || o.container == OutputFormat.mov) {
-          args.addAll(['-tag:v', 'hvc1']); // plays in QuickTime / iOS Photos
-        }
-      case VideoCodec.vp9:
-        args.addAll([
-          '-c:v', 'libvpx-vp9', '-row-mt', '1',
-          '-deadline', o.fastEncode ? 'realtime' : 'good',
-          '-cpu-used', o.fastEncode ? '8' : '4',
-        ]);
-      case VideoCodec.mpeg4:
-        args.addAll(['-c:v', 'mpeg4']);
-      case VideoCodec.copy:
-        break;
-    }
-
-    if (target != null) {
-      args.addAll(['-b:v', '${target}k', '-maxrate', '${(target * 1.5).round()}k', '-bufsize', '${target * 2}k']);
-    } else if (o.videoCodec == VideoCodec.mpeg4) {
-      args.addAll(['-q:v', '${_crf(o.videoCodec, o.quality)}']);
-    } else {
-      args.addAll(['-crf', '${_crf(o.videoCodec, o.quality)}']);
-      if (o.videoCodec == VideoCodec.vp9) args.addAll(['-b:v', '0']);
-    }
-    args.addAll(['-pix_fmt', 'yuv420p']);
+    args.addAll(_videoCodecArgs(o, target));
   }
 
   // ----- audio
-  if (!keepAudio) {
-    args.add('-an');
-  } else {
-    switch (o.audioCodec) {
-      case AudioCodec.aac:
-        args.addAll(['-c:a', 'aac', '-b:a', '${o.audioKbps}k']);
-      case AudioCodec.opus:
-        args.addAll(['-c:a', 'libopus', '-b:a', '${o.audioKbps}k']);
-      case AudioCodec.mp3:
-        args.addAll(['-c:a', 'libmp3lame', '-b:a', '${o.audioKbps}k']);
-      case AudioCodec.copy:
-        args.addAll(['-c:a', 'copy']);
-      case AudioCodec.none:
-        break;
-    }
-  }
-
-  if (o.container == OutputFormat.mp4 || o.container == OutputFormat.mov) {
-    args.addAll(['-movflags', '+faststart']);
-  }
+  args.addAll(keepAudio ? _audioCodecArgs(o.audioCodec, o.audioKbps) : ['-an']);
+  args.addAll(_containerArgs(o));
   args.add(output);
   return args;
 }
+
+/// Encoder arguments for [o]'s video codec; [targetKbps] switches from
+/// constant quality to a bitrate aimed at a file size.
+List<String> _videoCodecArgs(ConvertOptions o, int? targetKbps) {
+  final codec = o.videoCodec == VideoCodec.copy ? VideoCodec.h264 : o.videoCodec;
+  final args = <String>[];
+  switch (codec) {
+    case VideoCodec.h264 || VideoCodec.copy:
+      args.addAll(['-c:v', 'libx264', '-preset', o.fastEncode ? 'veryfast' : 'medium']);
+    case VideoCodec.h265:
+      args.addAll(['-c:v', 'libx265', '-preset', o.fastEncode ? 'veryfast' : 'medium']);
+      if (o.container == OutputFormat.mp4 || o.container == OutputFormat.mov) {
+        args.addAll(['-tag:v', 'hvc1']); // plays in QuickTime / iOS Photos
+      }
+    case VideoCodec.vp9:
+      args.addAll([
+        '-c:v', 'libvpx-vp9', '-row-mt', '1',
+        '-deadline', o.fastEncode ? 'realtime' : 'good',
+        '-cpu-used', o.fastEncode ? '8' : '4',
+      ]);
+    case VideoCodec.mpeg4:
+      args.addAll(['-c:v', 'mpeg4']);
+  }
+  if (targetKbps != null) {
+    args.addAll(['-b:v', '${targetKbps}k', '-maxrate', '${(targetKbps * 1.5).round()}k', '-bufsize', '${targetKbps * 2}k']);
+  } else if (codec == VideoCodec.mpeg4) {
+    args.addAll(['-q:v', '${_crf(codec, o.quality)}']);
+  } else {
+    args.addAll(['-crf', '${_crf(codec, o.quality)}']);
+    if (codec == VideoCodec.vp9) args.addAll(['-b:v', '0']);
+  }
+  args.addAll(['-pix_fmt', 'yuv420p']);
+  return args;
+}
+
+List<String> _audioCodecArgs(AudioCodec codec, int kbps) => switch (codec) {
+      AudioCodec.aac => ['-c:a', 'aac', '-b:a', '${kbps}k'],
+      AudioCodec.opus => ['-c:a', 'libopus', '-b:a', '${kbps}k'],
+      AudioCodec.mp3 => ['-c:a', 'libmp3lame', '-b:a', '${kbps}k'],
+      AudioCodec.copy => ['-c:a', 'copy'],
+      AudioCodec.none => ['-an'],
+    };
+
+List<String> _containerArgs(ConvertOptions o) =>
+    o.container == OutputFormat.mp4 || o.container == OutputFormat.mov ? ['-movflags', '+faststart'] : const [];
 
 String _num(double v) {
   if (v == v.roundToDouble()) return v.toInt().toString();
@@ -346,8 +345,11 @@ List<String> buildExportArgs({
   required List<SlowMoSegment> slowMos,
   required int durationMs,
   required bool hasAudio,
-  int crf = 20,
+  ConvertOptions options = const ConvertOptions(quality: Quality.high),
 }) {
+  final o = options;
+  final gif = o.container == OutputFormat.gif;
+  final wantAudio = hasAudio && !gif && o.audioCodec != AudioCodec.none;
   final args = <String>['-y', '-i', input];
   for (final o in overlays) {
     args.addAll(['-f', 'image2', '-framerate', '$kOverlayFps', '-start_number', '0', '-i', o.path]);
@@ -377,19 +379,11 @@ List<String> buildExportArgs({
   final ranges = speedRanges(slowMos, durationMs);
   final needsRetime = ranges.any((r) => r.speed != 1.0);
 
-  String vOut;
-  String? aOut = hasAudio ? '0:a' : null;
-  if (!needsRetime) {
-    if (graph.isEmpty) {
-      graph.add('[0:v]null[vout]');
-    } else {
-      graph[graph.length - 1] = graph.last.replaceFirst(RegExp(r'\[ov\d+\]$'), '[vout]');
-    }
-    vOut = 'vout';
-  } else {
+  String? aOut = wantAudio ? '0:a' : null;
+  if (needsRetime) {
     final n = ranges.length;
     graph.add('[$v]split=$n${[for (var i = 0; i < n; i++) '[vs$i]'].join()}');
-    if (hasAudio) {
+    if (wantAudio) {
       graph.add('[0:a]asplit=$n${[for (var i = 0; i < n; i++) '[as$i]'].join()}');
     }
     final concatInputs = StringBuffer();
@@ -398,28 +392,61 @@ List<String> buildExportArgs({
       final pts = r.speed == 1.0 ? 'PTS-STARTPTS' : '(PTS-STARTPTS)/${_num(r.speed)}';
       graph.add('[vs$i]trim=start=${fmtSec(r.startMs)}:end=${fmtSec(r.endMs)},setpts=$pts[vc$i]');
       concatInputs.write('[vc$i]');
-      if (hasAudio) {
+      if (wantAudio) {
         graph.add('[as$i]atrim=start=${fmtSec(r.startMs)}:end=${fmtSec(r.endMs)},'
             'asetpts=PTS-STARTPTS,${atempoChain(r.speed)}[ac$i]');
         concatInputs.write('[ac$i]');
       }
     }
-    graph.add('${concatInputs}concat=n=$n:v=1:a=${hasAudio ? 1 : 0}'
-        '[vout]${hasAudio ? '[aout]' : ''}');
-    vOut = 'vout';
-    aOut = hasAudio ? 'aout' : null;
+    graph.add('${concatInputs}concat=n=$n:v=1:a=${wantAudio ? 1 : 0}[vcat]${wantAudio ? '[aout]' : ''}');
+    v = 'vcat';
+    if (wantAudio) aOut = 'aout';
   }
 
-  args.addAll(['-filter_complex', graph.join(';'), '-map', '[$vOut]']);
-  if (aOut != null) {
-    args.addAll(['-map', aOut == '0:a' ? '0:a:0' : '[$aOut]']);
+  // Output format: resize / frame rate, or the GIF palette pipeline.
+  if (gif) {
+    final fps = o.fps ?? 12;
+    final h = o.maxHeight ?? 480;
+    graph.add("[$v]fps=${_num(fps)},scale=-2:'min($h,ih)':flags=lanczos,split[ga][gb];"
+        '[ga]palettegen=stats_mode=diff[gp];[gb][gp]paletteuse=dither=bayer:bayer_scale=4[vout]');
+  } else {
+    final post = [
+      if (o.maxHeight != null) _scaleFilter(o.maxHeight!),
+      if (o.fps != null) 'fps=${_num(o.fps!)}',
+    ];
+    if (post.isNotEmpty) {
+      graph.add('[$v]${post.join(',')}[vout]');
+    } else if (graph.isEmpty) {
+      graph.add('[0:v]null[vout]');
+    } else {
+      // Rename the final label instead of adding a no-op filter.
+      graph[graph.length - 1] = graph.last.replaceFirst('[$v]', '[vout]');
+    }
   }
-  args.addAll([
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '$crf', '-pix_fmt', 'yuv420p',
-    if (aOut != null) ...['-c:a', 'aac', '-b:a', '160k'] else '-an',
-    '-movflags', '+faststart',
-    output,
-  ]);
+
+  args.addAll(['-filter_complex', graph.join(';'), '-map', '[vout]']);
+  if (gif) {
+    args.addAll(['-loop', '0', output]);
+    return args;
+  }
+  if (aOut != null) args.addAll(['-map', aOut == '0:a' ? '0:a:0' : '[$aOut]']);
+
+  final outMs = exportedDurationMs(slowMos, durationMs);
+  final target = o.targetSizeMb == null
+      ? null
+      : bitrateForTargetSize(targetMb: o.targetSizeMb!, durationMs: outMs, audioKbps: aOut != null ? o.audioKbps : 0);
+  args.addAll(_videoCodecArgs(o, target));
+  if (aOut == null) {
+    args.add('-an');
+  } else {
+    // Filtered (re-timed) audio can't be stream-copied.
+    final codec = o.audioCodec == AudioCodec.copy && aOut != '0:a'
+        ? (o.container == OutputFormat.webm ? AudioCodec.opus : AudioCodec.aac)
+        : o.audioCodec;
+    args.addAll(_audioCodecArgs(codec, o.audioKbps));
+  }
+  args.addAll(_containerArgs(o));
+  args.add(output);
   return args;
 }
 

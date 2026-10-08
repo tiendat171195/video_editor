@@ -14,7 +14,7 @@ App ghi chú trực tiếp (real-time) trên video, viết bằng **Flutter**: c
   - Thanh chọn có các nút **Ẩn tại đây**, **Hiện từ đây**, Sửa, Xoá. Note đã chọn vẫn hiện mờ khi tua ra ngoài khoảng thời gian của nó.
   - Kéo vào chỗ trống trên video để tua
 - **Zoom**: chụm 2 ngón để phóng to tới 6x, vẫn vẽ và gõ chính xác khi đang zoom. Khi đang zoom, kéo 1 ngón vào chỗ trống để di chuyển khung nhìn. Chạm nhãn "x" để về 1x.
-- Hoàn tác / làm lại trên thanh trên cùng, áp dụng cho mọi thao tác. Xuất, Cắt, Chuyển đổi nằm trong nút ⋮.
+- Hoàn tác / làm lại trên thanh trên cùng, áp dụng cho mọi thao tác. Xuất video và Cắt video nằm trong nút ⋮.
 - **Tua mượt**: app trích sẵn khung hình độ phân giải thấp ở chế độ nền, nên khi kéo thanh tiến trình, hình chạy theo ngón tay ngay lập tức. Kéo ngón tay xa thanh lên phía trên để tua chậm hơn (×¼, ×⅒). Có nút tiến/lùi từng khung hình.
 - Timeline hiển thị các note (thanh màu) và đoạn slow-mo (màu cam).
 
@@ -25,19 +25,20 @@ App ghi chú trực tiếp (real-time) trên video, viết bằng **Flutter**: c
 - Khi xem lại, đoạn đã đánh dấu tự phát chậm. Khi xuất, đoạn đó được kéo dài thật, âm thanh giữ nguyên cao độ (`atempo`).
 - Tốc độ phát chung (0.25x–2x) để xem chậm mà không cần đánh dấu.
 
-**Xuất video kèm note** (🎬): note được vẽ bằng Flutter thành PNG rồi FFmpeg ghép vào đúng khoảng thời gian, nên chữ tiếng Việt có dấu hiển thị đúng và kết quả giống hệt bản xem trước.
+**Xuất video** (menu ⋮ → Xuất video): đây là màn duy nhất để xuất, gồm cả đổi định dạng và nén.
+- Bật/tắt **Kèm note & slow-mo**. Note được vẽ bằng Flutter rồi ghép vào video, nên chữ tiếng Việt có dấu hiển thị đúng và hiệu ứng giống hệt bản xem trước.
+- Chọn nhanh một mẫu: **Chất lượng gốc**, **Gửi nhanh** (720p), **Siêu nhẹ** (480p, 30fps), **Theo dung lượng** (chọn số MB tối đa), **GIF**.
+- **Tuỳ chỉnh nâng cao**:
+  - Định dạng: MP4, MOV, MKV, WebM, GIF
+  - Codec: H.264, H.265, VP9, MPEG-4, hoặc giữ nguyên (chỉ khi không kèm note)
+  - Độ phân giải, FPS
+  - Âm thanh: AAC, Opus, MP3, giữ nguyên, bỏ âm thanh; chọn được bitrate
+  - Encode nhanh / chậm (file nhỏ hơn)
+- Video có metadata xoay (quay dọc trên điện thoại) được xuất ra đúng chiều, note nằm đúng vị trí.
 
 **Cắt video** (✂️)
 - *Chính xác*: encode lại, cắt đúng từng khung hình, có thể mang note và slow-mo sang video mới.
 - *Nhanh*: không encode lại, gần như tức thì, nhưng điểm cắt bị kéo về keyframe gần nhất.
-
-**Chuyển đổi / nén** (⚙️)
-- Định dạng: MP4, MOV, MKV, WebM, GIF
-- Video codec: H.264, H.265/HEVC, VP9, MPEG-4, hoặc giữ nguyên (chỉ remux)
-- Audio: AAC, Opus, MP3, giữ nguyên, hoặc bỏ âm thanh; chọn được bitrate
-- FPS: giữ nguyên, 60, 30, 25, 24, 15, 10
-- Độ phân giải: giữ nguyên, hoặc 2160p xuống 360p (chỉ thu nhỏ, không phóng to)
-- Dung lượng: chọn theo mức chất lượng (CRF) hoặc **theo dung lượng mục tiêu (MB)**. Khi chọn theo MB, app tự tính bitrate.
 
 File kết quả được lưu ở `Android/data/com.tiendat.video_note/files/VideoNote/`. Từ đó có thể lưu vào thư viện ảnh, chia sẻ, hoặc mở trong editor. Project và note được tự động lưu.
 
@@ -60,7 +61,7 @@ lib/
     home_screen.dart       # danh sách project, mở video
     editor_screen.dart     # player + vẽ/gõ note real-time + slow-mo + timeline
     trim_screen.dart
-    convert_screen.dart
+    export_screen.dart     # xuất video: note + định dạng/codec/nén
   widgets/
     annotation_painter.dart  # dùng chung cho preview và export
     timeline.dart

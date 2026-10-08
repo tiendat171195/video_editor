@@ -117,4 +117,43 @@ void main() {
       expect(args, containsAllInOrder(['-map', '[vout]', '-map', '[aout]']));
     });
   });
+
+  test('export applies output options after notes and slow motion', () {
+    final args = buildExportArgs(
+      input: 'in.mp4',
+      output: 'out.mkv',
+      overlays: const [OverlayImage(path: 'a_%03d.png', x: 0, y: 0, startMs: 0, endMs: 1000)],
+      slowMos: [SlowMoSegment(startMs: 0, endMs: 1000, speed: 0.5)],
+      durationMs: 2000,
+      hasAudio: true,
+      options: const ConvertOptions(
+        container: OutputFormat.mkv,
+        videoCodec: VideoCodec.copy,
+        audioCodec: AudioCodec.copy,
+        maxHeight: 720,
+        fps: 30,
+      ),
+    );
+    final graph = args[args.indexOf('-filter_complex') + 1];
+    expect(graph, contains("concat=n=2:v=1:a=1[vcat][aout];[vcat]scale=-2:'min(720,ih)',fps=30[vout]"));
+    expect(args, containsAllInOrder(['-c:v', 'libx264']), reason: 'cannot stream-copy filtered video');
+    expect(args, containsAllInOrder(['-c:a', 'aac']), reason: 'cannot stream-copy re-timed audio');
+  });
+
+  test('gif export runs the palette pipeline and drops audio', () {
+    final args = buildExportArgs(
+      input: 'in.mp4',
+      output: 'out.gif',
+      overlays: const [],
+      slowMos: const [],
+      durationMs: 2000,
+      hasAudio: true,
+      options: const ConvertOptions(container: OutputFormat.gif),
+    );
+    final graph = args[args.indexOf('-filter_complex') + 1];
+    expect(graph, startsWith('[0:v]fps=12,'));
+    expect(graph, endsWith('paletteuse=dither=bayer:bayer_scale=4[vout]'));
+    expect(args, isNot(contains('-c:a')));
+    expect(args.sublist(args.length - 3), ['-loop', '0', 'out.gif']);
+  });
 }

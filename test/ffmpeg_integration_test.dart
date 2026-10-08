@@ -106,4 +106,50 @@ void main() {
     ));
     expect(await durationOf(out), closeTo(4.0, 0.3));
   }, skip: skip);
+
+  test('export with notes in every output format', () async {
+    final slow = [SlowMoSegment(startMs: 1000, endMs: 2000, speed: 0.5)];
+    final overlays = [
+      OverlayImage(path: '${dir.path}/seq_%03d.png', x: 20, y: 20, startMs: 500, endMs: 3000, frameCount: 5, fadeOutMs: 250),
+    ];
+    final cases = <String, ConvertOptions>{
+      'h265_720.mp4': const ConvertOptions(videoCodec: VideoCodec.h265, maxHeight: 120, fps: 15),
+      'vp9.webm': const ConvertOptions(container: OutputFormat.webm, videoCodec: VideoCodec.vp9, audioCodec: AudioCodec.opus),
+      'copyaudio.mkv': const ConvertOptions(container: OutputFormat.mkv, videoCodec: VideoCodec.copy, audioCodec: AudioCodec.copy),
+      'size.mp4': const ConvertOptions(targetSizeMb: 0.3),
+      'mute.mov': const ConvertOptions(container: OutputFormat.mov, audioCodec: AudioCodec.none),
+      'notes.gif': const ConvertOptions(container: OutputFormat.gif, fps: 10, maxHeight: 120),
+    };
+    for (final e in cases.entries) {
+      final out = '${dir.path}/exp_${e.key}';
+      await ff(buildExportArgs(
+        input: src,
+        output: out,
+        overlays: overlays,
+        slowMos: slow,
+        durationMs: 4000,
+        hasAudio: true,
+        options: e.value,
+      ));
+      expect(await durationOf(out), closeTo(5.0, 0.4), reason: e.key);
+    }
+  }, skip: skip);
+
+  test('export of a rotated video comes out upright with notes on top', () async {
+    final rotated = '${dir.path}/rotated.mp4';
+    await ff(['-y', '-display_rotation', '90', '-i', src, '-c', 'copy', rotated]);
+    final out = '${dir.path}/exp_rotated.mp4';
+    await ff(buildExportArgs(
+      input: rotated,
+      output: out,
+      overlays: [OverlayImage(path: png, x: 10, y: 200, startMs: 0, endMs: 4000)],
+      slowMos: const [],
+      durationMs: 4000,
+      hasAudio: true,
+    ));
+    final r = await Process.run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries',
+      'stream=width,height:stream_side_data=rotation', '-of', 'csv=p=0', out]);
+    // 320x240 rotated 90° displays as 240x320, with no rotation left to apply.
+    expect((r.stdout as String).trim(), '240,320');
+  }, skip: skip);
 }

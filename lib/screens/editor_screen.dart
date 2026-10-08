@@ -10,16 +10,13 @@ import 'package:video_player/video_player.dart';
 import '../models/annotation.dart';
 import '../models/media_info.dart';
 import '../models/project.dart';
-import '../services/ffmpeg_commands.dart';
 import '../services/ffmpeg_service.dart';
-import '../services/overlay_renderer.dart';
 import '../services/scrub_frames.dart';
 import '../services/storage.dart';
 import '../util/format.dart';
 import '../widgets/annotation_painter.dart';
-import '../widgets/job_runner.dart';
 import '../widgets/timeline.dart';
-import 'convert_screen.dart';
+import 'export_screen.dart';
 import 'trim_screen.dart';
 
 enum Tool { hand, pen, ellipse, rect, arrow, text }
@@ -36,6 +33,14 @@ const kNoteColors = <Color>[
 ];
 
 const kSpeeds = <double>[0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
+/// Aspect ratio of the video as shown on screen. Depending on the device's
+/// rendering backend, video_player may report the size before rotation and
+/// rotate the picture itself; the notes canvas must match the rotated frame.
+double displayAspectRatio(VideoPlayerValue v) {
+  final a = v.aspectRatio;
+  return v.rotationCorrection % 180 == 90 ? 1 / a : a;
+}
 
 int _idCounter = 0;
 String newId() => '${DateTime.now().microsecondsSinceEpoch}_${_idCounter++}';
@@ -582,51 +587,35 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
 
   // ------------------------------------------------------------------ actions
 
-  Future<void> _export() async {
+  /// Upright pixel size of the video frame, i.e. what ffmpeg filters see
+  /// after applying rotation metadata. Probe dimensions are trusted, but
+  /// their orientation is checked against what the player displays.
+  (int, int) _frameSize() {
+    final ctrl = _ctrl!;
+    final aspect = displayAspectRatio(ctrl.value);
+    final info = _info;
+    var w = info?.displayWidth ?? 0;
+    var h = info?.displayHeight ?? 0;
+    if (w <= 0 || h <= 0) {
+      final sz = ctrl.value.size;
+      final swap = ctrl.value.rotationCorrection % 180 == 90;
+      w = (swap ? sz.height : sz.width).round();
+      h = (swap ? sz.width : sz.height).round();
+    }
+    if ((w > h) != (aspect > 1) && (w - h).abs() > 1) (w, h) = (h, w);
+    return (w, h);
+  }
+
+  Future<void> _openExport() async {
     final ctrl = _ctrl;
     if (ctrl == null) return;
-    if (!_p.hasEdits) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Chưa có note hay slow-mo nào để xuất')));
-      return;
-    }
     await ctrl.pause();
-    final info = _info ?? await FfmpegService.probe(_p.videoPath);
-    final w = info?.displayWidth ?? ctrl.value.size.width.round();
-    final h = info?.displayHeight ?? ctrl.value.size.height.round();
-    if (w <= 0 || h <= 0 || !mounted) return;
-
-    final dir = await Storage.tempDir('overlays');
-    final overlays = await renderOverlays(
-      annotations: _p.annotations,
-      videoWidth: w,
-      videoHeight: h,
-      outDir: dir,
-      durationMs: _durationMs,
-    );
-    final out = await Storage.newOutputPath(_p.videoPath, 'note', 'mp4');
-    final args = buildExportArgs(
-      input: _p.videoPath,
-      output: out,
-      overlays: overlays,
-      slowMos: _p.slowMos,
-      durationMs: _durationMs,
-      hasAudio: info?.hasAudio ?? true,
-    );
+    _saveNow();
+    final (w, h) = _frameSize();
     if (!mounted) return;
-    final path = await runJobWithProgress(
-      context,
-      title: 'Đang xuất video kèm note…',
-      args: args,
-      outputPath: out,
-      outputDurationMs: exportedDurationMs(_p.slowMos, _durationMs),
-    );
-    if (path == null || !mounted) return;
-    await showResultSheet(
-      context,
-      path: path,
-      sourceSizeBytes: info?.sizeBytes,
-      onOpenInEditor: () => openEditor(context, projectForOutput(path, folder: _p.folder)),
-    );
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ExportScreen(project: _p, info: _info, frameWidth: w, frameHeight: h, durationMs: _durationMs),
+    ));
   }
 
   Future<void> _openTrim() async {
@@ -634,14 +623,6 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
     if (!mounted) return;
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => TrimScreen(project: _p, info: _info, initialPositionMs: _pos.value),
-    ));
-  }
-
-  Future<void> _openConvert() async {
-    await _ctrl?.pause();
-    if (!mounted) return;
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ConvertScreen(project: _p, info: _info),
     ));
   }
 
@@ -692,15 +673,18 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
           PopupMenuButton<String>(
             enabled: ctrl != null,
             onSelected: (v) => switch (v) {
-              'export' => _export(),
+              'export' => _openExport(),
               'trim' => _openTrim(),
-              'convert' => _openConvert(),
               _ => _showInfo(),
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.movie_creation_outlined), title: Text('Xuất video kèm note'))),
+              PopupMenuItem(
+                  value: 'export',
+                  child: ListTile(
+                      leading: Icon(Icons.movie_creation_outlined),
+                      title: Text('Xuất video'),
+                      subtitle: Text('Kèm note, đổi định dạng, nén'))),
               PopupMenuItem(value: 'trim', child: ListTile(leading: Icon(Icons.content_cut), title: Text('Cắt video'))),
-              PopupMenuItem(value: 'convert', child: ListTile(leading: Icon(Icons.tune), title: Text('Chuyển đổi / nén'))),
               PopupMenuItem(value: 'info', child: ListTile(leading: Icon(Icons.info_outline), title: Text('Thông tin video'))),
             ],
           ),
@@ -836,7 +820,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       color: Colors.black,
       alignment: Alignment.center,
       child: AspectRatio(
-        aspectRatio: ctrl.value.aspectRatio,
+        aspectRatio: displayAspectRatio(ctrl.value),
         child: LayoutBuilder(builder: (context, c) {
           final size = Size(c.maxWidth, c.maxHeight);
           final hand = _tool == Tool.hand;
