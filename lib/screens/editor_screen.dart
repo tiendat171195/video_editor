@@ -175,7 +175,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
     final probe = FfmpegService.probe(_p.videoPath).catchError((_) => null);
     try {
       await ctrl.initialize();
-      _info = await probe;
+      _info = _withPlayerRotation(await probe, ctrl.value);
     } catch (e) {
       await ctrl.dispose();
       if (mounted) setState(() => _loadError = 'Không mở được video: $e');
@@ -660,6 +660,23 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
   }
 
   // ------------------------------------------------------------------ actions
+
+  /// If ffprobe found no rotation but the player rotates the video, trust the
+  /// player: otherwise the editor shows a portrait clip sideways and notes
+  /// and zoom are placed on the wrong frame.
+  static MediaInfo? _withPlayerRotation(MediaInfo? info, VideoPlayerValue v) {
+    if (info == null || info.rotation != 0) return info;
+    if (v.rotationCorrection % 360 != 0) {
+      // rotationCorrection is clockwise; MediaInfo uses ffprobe's sign.
+      return info.withRotation(-v.rotationCorrection);
+    }
+    // The player already shows it rotated (size reported upright) but gives
+    // no angle: phones store portrait clips needing 90° clockwise.
+    final playerPortrait = v.size.height > v.size.width;
+    final probePortrait = info.height > info.width;
+    if (v.size.width > 0 && playerPortrait != probePortrait) return info.withRotation(-90);
+    return info;
+  }
 
   /// Upright pixel size of the video frame, i.e. what ffmpeg filters see
   /// after applying rotation metadata. ffprobe is the source of truth since

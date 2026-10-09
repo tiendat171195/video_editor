@@ -46,11 +46,28 @@ class FfmpegService {
     try {
       size = await File(path).length();
     } catch (_) {}
-    return MediaInfo.fromProbe(
+    var media = MediaInfo.fromProbe(
       format: info.getFormatProperties(),
       streams: streams,
       fallbackSizeBytes: size,
     );
+    if (media.rotation == 0) {
+      // The JSON route can lose nested side data on some platforms; ffmpeg's
+      // own text output always names the display matrix rotation.
+      final r = await _rotationFromLog(path);
+      if (r != null && r != 0) media = media.withRotation(r);
+    }
+    return media;
+  }
+
+  static Future<int?> _rotationFromLog(String path) async {
+    try {
+      final session = await FFprobeKit.executeWithArguments(['-hide_banner', '-v', 'info', '-i', path]);
+      final log = await session.getAllLogsAsString() ?? '';
+      return MediaInfo.rotationFromLog(log);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Starts ffmpeg with [args]. [outputDurationMs] is used to turn ffmpeg's

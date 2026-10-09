@@ -46,6 +46,34 @@ class MediaInfo {
     return ((r / 90).round() * 90) % 360;
   }
 
+  MediaInfo withRotation(int r) => MediaInfo(
+        durationMs: durationMs,
+        width: width,
+        height: height,
+        rotation: r,
+        fps: fps,
+        videoCodec: videoCodec,
+        audioCodec: audioCodec,
+        hasAudio: hasAudio,
+        bitrate: bitrate,
+        sizeBytes: sizeBytes,
+        format: format,
+      );
+
+  /// Rotation (ffprobe convention, counter-clockwise degrees) from ffmpeg's
+  /// text output, e.g. "displaymatrix: rotation of -90.00 degrees" or an old
+  /// style "rotate : 90" tag. Null when the log mentions none.
+  static int? rotationFromLog(String log) {
+    final m = RegExp(r'rotation of (-?\d+(?:\.\d+)?) degrees').firstMatch(log) ??
+        RegExp(r'^\s*rotate\s*:\s*(-?\d+)', multiLine: true).firstMatch(log);
+    if (m == null) return null;
+    final v = double.tryParse(m.group(1)!);
+    if (v == null) return null;
+    // An old "rotate" tag is clockwise; normalise to the display matrix sign.
+    final isTag = !m.group(0)!.contains('rotation of');
+    return (isTag ? -v : v).round();
+  }
+
   /// Builds a [MediaInfo] from ffprobe's JSON-like property maps.
   factory MediaInfo.fromProbe({
     required Map<dynamic, dynamic>? format,
@@ -94,7 +122,8 @@ class MediaInfo {
     }
     final tags = video['tags'];
     if (tags is Map && tags['rotate'] != null) {
-      return _num(tags['rotate'])?.toInt() ?? 0;
+      // The legacy tag is clockwise; the display matrix angle is not.
+      return -(_num(tags['rotate'])?.toInt() ?? 0);
     }
     return 0;
   }

@@ -123,4 +123,20 @@ void main() {
       [500, 1500],
     ]);
   });
+
+  test('rotation is read from ffmpeg text output', () {
+    const log = """
+  Stream #0:0[0x1](eng): Video: hevc (Main) (hvc1 / 0x31637668), yuv420p(tv, bt709), 1920x1080, 10203 kb/s, 30.01 fps
+    Metadata:
+      handler_name    : VideoHandle
+    Side data:
+      displaymatrix: rotation of -90.00 degrees
+""";
+    expect(MediaInfo.rotationFromLog(log), -90);
+    expect(MediaInfo.rotationFromLog('    rotate          : 90\n'), -90, reason: 'legacy tag is clockwise');
+    expect(MediaInfo.rotationFromLog('no side data here'), isNull);
+    final info = const MediaInfo(durationMs: 0, width: 1920, height: 1080).withRotation(-90);
+    expect(info.displayWidth, 1080);
+    expect(info.uprightRotation, 90);
+  });
 }

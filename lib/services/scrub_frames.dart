@@ -31,7 +31,7 @@ class ScrubFrames {
     final secs = durationMs / 1000.0;
     final fps = secs <= 0 ? 10.0 : (_maxFrames / secs).clamp(2.0, 15.0).floorToDouble();
     final base = await getTemporaryDirectory();
-    final dir = Directory('${base.path}/scrub2_$cacheKey');
+    final dir = Directory('${base.path}/scrub3_${cacheKey}_r$rotation');
     final frames = ScrubFrames._(dir, fps);
     final marker = File('${dir.path}/done_${fps.toInt()}');
     if (marker.existsSync()) {
