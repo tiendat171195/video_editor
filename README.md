@@ -83,6 +83,11 @@ flutter build apk --release --split-per-abi    # APK arm64 ~64 MB
 
 GitHub Actions (`.github/workflows/android.yml`) chạy analyze, test, build APK arm64 rồi đính kèm làm artifact.
 
+### Cài APK & ký bản build
+- Mỗi lần push, GitHub Actions build APK arm64 và đăng lên **Releases** (`build-N`). Mở trang Releases trên điện thoại, tải `video-note-arm64.apk` rồi cài.
+- Bản release được ký bằng key cố định lưu trong GitHub Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Nhờ vậy bản mới cài đè lên bản cũ mà không mất dữ liệu. Thiếu secrets thì build vẫn chạy nhưng ký bằng debug key tạm, nên không cài đè được.
+- `versionCode` lấy theo số lần chạy CI, nên bản sau luôn mới hơn bản trước.
+
 ### iOS (sau này)
 Thư mục `ios/` đã có sẵn. Info.plist đã khai báo quyền thư viện ảnh. Trên máy Mac:
 1. Deployment target đã là iOS 15.0, đủ cho FFmpegKit (yêu cầu ≥ 14.0). Nếu Podfile được tạo ra, đặt `platform :ios, '15.0'`.
