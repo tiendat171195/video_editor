@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:video_note/models/annotation.dart';
 import 'package:video_note/models/media_info.dart';
 import 'package:video_note/models/project.dart';
+import 'package:video_note/models/zoom.dart';
 
 Annotation note(int start, int dur) => Annotation(
       id: '$start',
@@ -102,5 +103,24 @@ void main() {
   test('folder survives json', () {
     final p = VideoProject(id: 'p', videoPath: '/v.mp4', name: 'v', folder: 'Trận 1');
     expect(VideoProject.fromJson(jsonDecode(jsonEncode(p.toJson())) as Map<String, dynamic>).folder, 'Trận 1');
+  });
+
+  test('zoom ranges: clip overlaps, survive json and trim', () {
+    final p = VideoProject(id: 'p', videoPath: '/v.mp4', name: 'v');
+    p.addZoom(ZoomSegment(startMs: 0, endMs: 4000, scale: 2, cx: 0.5, cy: 0.5));
+    p.addZoom(ZoomSegment(startMs: 1000, endMs: 2000, scale: 3, cx: 0.4, cy: 0.6));
+    expect(p.zooms.map((z) => [z.startMs, z.endMs, z.scale]).toList(), [
+      [0, 1000, 2.0],
+      [1000, 2000, 3.0],
+      [2000, 4000, 2.0],
+    ]);
+    expect(p.hasEdits, isTrue);
+    final back = VideoProject.fromJson(jsonDecode(jsonEncode(p.toJson())) as Map<String, dynamic>);
+    expect(back.zooms[1].cx, closeTo(0.4, 1e-9));
+    final t = p.retimedForTrim(1500, 3000);
+    expect(t.zooms.map((z) => [z.startMs, z.endMs]).toList(), [
+      [0, 500],
+      [500, 1500],
+    ]);
   });
 }

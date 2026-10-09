@@ -13,7 +13,7 @@ App ghi chú trực tiếp (real-time) trên video, viết bằng **Flutter**: c
   - Chạm vào note để chọn, kéo để **di chuyển** (cả chữ lẫn hình)
   - Thanh chọn có các nút **Ẩn tại đây**, **Hiện từ đây**, Sửa, Xoá. Note đã chọn vẫn hiện mờ khi tua ra ngoài khoảng thời gian của nó.
   - Kéo vào chỗ trống trên video để tua
-- **Zoom**: chụm 2 ngón để phóng to tới 6x, vẫn vẽ và gõ chính xác khi đang zoom. Khi đang zoom, kéo 1 ngón vào chỗ trống để di chuyển khung nhìn. Chạm nhãn "x" để về 1x.
+- **Zoom vào video xuất ra**: chụm 2 ngón để phóng to vùng cần xem (tới 6x), bấm **Zoom video** để bắt đầu đoạn zoom (video tự phát), bấm **Dừng zoom** để kết thúc. Zoom vào và ra mượt (~0,4s). Khi xem lại, đoạn zoom tự hiện đúng như video xuất ra, note phóng to theo hình. Đoạn zoom hiện màu xanh trên timeline và có trong danh sách để xoá. Nếu chỉ chụm 2 ngón mà không bấm Zoom video thì chỉ là phóng to khi xem (để vẽ chi tiết), không ảnh hưởng video xuất ra.
 - Hoàn tác / làm lại trên thanh trên cùng, áp dụng cho mọi thao tác. Xuất video và Cắt video nằm trong nút ⋮.
 - **Tua mượt**: app trích sẵn khung hình độ phân giải thấp ở chế độ nền, nên khi kéo thanh tiến trình, hình chạy theo ngón tay ngay lập tức. Kéo ngón tay xa thanh lên phía trên để tua chậm hơn (×¼, ×⅒). Có nút tiến/lùi từng khung hình.
 - Timeline hiển thị các note (thanh màu) và đoạn slow-mo (màu cam).

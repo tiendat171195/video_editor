@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_note/models/annotation.dart';
+import 'package:video_note/models/zoom.dart';
 import 'package:video_note/services/ffmpeg_commands.dart';
 import 'package:video_note/services/overlay_renderer.dart';
 
@@ -87,4 +88,34 @@ void main() {
       expect(centre[0], lessThan(60), reason: 'inside should be black, got $centre');
     }, skip: skip);
   }
+
+  test('zoomed export shows exactly the chosen region', () async {
+    final dir = await Directory.systemTemp.createTemp('vn_zoom');
+    addTearDown(() => dir.delete(recursive: true));
+    final src = '${dir.path}/src.mp4';
+    await _ff(['-y', '-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=30:duration=4',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', src]);
+    final out = '${dir.path}/out.mp4';
+    await _ff(buildExportArgs(
+      input: src,
+      output: out,
+      overlays: const [],
+      slowMos: const [],
+      zooms: [ZoomSegment(startMs: 1000, endMs: 3000, scale: 2, cx: 0.75, cy: 0.25)],
+      frameWidth: 320,
+      frameHeight: 180,
+      fps: 30,
+      durationMs: 4000,
+      hasAudio: false,
+    ));
+    // Mid-zoom frame vs. the source's top-right quarter scaled up.
+    final r = await Process.run('ffmpeg', [
+      '-hide_banner', '-ss', '2', '-i', out, '-ss', '2', '-i', src,
+      '-filter_complex', '[1:v]crop=160:90:160:0,scale=320:180[ref];[0:v][ref]psnr',
+      '-frames:v', '1', '-f', 'null', '-',
+    ]);
+    final m = RegExp(r'average:([0-9.]+)').firstMatch(r.stderr as String);
+    expect(m, isNotNull, reason: r.stderr as String);
+    expect(double.parse(m!.group(1)!), greaterThan(28));
+  }, skip: skip);
 }

@@ -1,4 +1,5 @@
 import 'annotation.dart';
+import 'zoom.dart';
 
 /// A video together with the notes and slow-motion ranges placed on it.
 class VideoProject {
@@ -10,9 +11,11 @@ class VideoProject {
     this.folder,
     List<Annotation>? annotations,
     List<SlowMoSegment>? slowMos,
+    List<ZoomSegment>? zooms,
     DateTime? updatedAt,
   })  : annotations = annotations ?? [],
         slowMos = slowMos ?? [],
+        zooms = zooms ?? [],
         updatedAt = updatedAt ?? DateTime.now();
 
   final String id;
@@ -24,9 +27,40 @@ class VideoProject {
   String? folder;
   final List<Annotation> annotations;
   final List<SlowMoSegment> slowMos;
+  final List<ZoomSegment> zooms;
   DateTime updatedAt;
 
-  bool get hasEdits => annotations.isNotEmpty || slowMos.isNotEmpty;
+  bool get hasEdits => annotations.isNotEmpty || slowMos.isNotEmpty || zooms.isNotEmpty;
+
+  ZoomSegment? zoomSegmentAt(int ms) {
+    for (final z in zooms) {
+      if (z.contains(ms)) return z;
+    }
+    return null;
+  }
+
+  /// Adds a zoom range; overlapping ranges are clipped or split.
+  void addZoom(ZoomSegment seg) {
+    if (seg.endMs <= seg.startMs) return;
+    final result = <ZoomSegment>[];
+    for (final z in zooms) {
+      if (z.endMs <= seg.startMs || z.startMs >= seg.endMs) {
+        result.add(z);
+        continue;
+      }
+      if (z.startMs < seg.startMs) {
+        result.add(ZoomSegment(startMs: z.startMs, endMs: seg.startMs, scale: z.scale, cx: z.cx, cy: z.cy));
+      }
+      if (z.endMs > seg.endMs) {
+        result.add(ZoomSegment(startMs: seg.endMs, endMs: z.endMs, scale: z.scale, cx: z.cx, cy: z.cy));
+      }
+    }
+    result.add(seg);
+    result.sort((a, b) => a.startMs.compareTo(b.startMs));
+    zooms
+      ..clear()
+      ..addAll(result);
+  }
 
   List<Annotation> visibleAt(int ms) =>
       [for (final a in annotations) if (a.isVisibleAt(ms)) a];
@@ -65,7 +99,7 @@ class VideoProject {
   /// Notes and slow-mo ranges re-timed for a clip cut out of this video
   /// between [startMs] and [endMs]. Items outside the range are dropped,
   /// items crossing an edge are clipped.
-  ({List<Annotation> annotations, List<SlowMoSegment> slowMos}) retimedForTrim(
+  ({List<Annotation> annotations, List<SlowMoSegment> slowMos, List<ZoomSegment> zooms}) retimedForTrim(
       int startMs, int endMs) {
     final anns = <Annotation>[];
     for (final a in annotations) {
@@ -81,7 +115,14 @@ class VideoProject {
       if (e - s <= 0) continue;
       segs.add(SlowMoSegment(startMs: s - startMs, endMs: e - startMs, speed: m.speed));
     }
-    return (annotations: anns, slowMos: segs);
+    final zs = <ZoomSegment>[];
+    for (final z in zooms) {
+      final s = z.startMs.clamp(startMs, endMs);
+      final e = z.endMs.clamp(startMs, endMs);
+      if (e - s <= 0) continue;
+      zs.add(ZoomSegment(startMs: s - startMs, endMs: e - startMs, scale: z.scale, cx: z.cx, cy: z.cy));
+    }
+    return (annotations: anns, slowMos: segs, zooms: zs);
   }
 
   Map<String, dynamic> toJson() => {
@@ -93,6 +134,7 @@ class VideoProject {
         'updatedAt': updatedAt.toIso8601String(),
         'annotations': [for (final a in annotations) a.toJson()],
         'slowMos': [for (final s in slowMos) s.toJson()],
+        'zooms': [for (final z in zooms) z.toJson()],
       };
 
   factory VideoProject.fromJson(Map<String, dynamic> json) => VideoProject(
@@ -109,6 +151,10 @@ class VideoProject {
         slowMos: [
           for (final s in json['slowMos'] as List? ?? const [])
             SlowMoSegment.fromJson(Map<String, dynamic>.from(s as Map))
+        ],
+        zooms: [
+          for (final z in json['zooms'] as List? ?? const [])
+            ZoomSegment.fromJson(Map<String, dynamic>.from(z as Map))
         ],
       );
 }

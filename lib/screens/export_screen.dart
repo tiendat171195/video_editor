@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/annotation.dart';
 import '../models/media_info.dart';
 import '../models/project.dart';
+import '../models/zoom.dart';
 import '../services/ffmpeg_commands.dart';
 import '../services/overlay_renderer.dart';
 import '../services/storage.dart';
@@ -166,6 +167,10 @@ class _ExportScreenState extends State<ExportScreen> {
         durationMs: widget.durationMs,
         hasAudio: hasAudio,
         options: _options,
+        zooms: _p.zooms,
+        frameWidth: widget.frameWidth,
+        frameHeight: widget.frameHeight,
+        fps: widget.info?.fps ?? 30,
       );
     } else {
       args = buildConvertArgs(
@@ -199,6 +204,7 @@ class _ExportScreenState extends State<ExportScreen> {
                 folder: _p.folder,
                 annotations: carry ? [for (final a in _p.annotations) a.copyWith(id: newId())] : null,
                 slowMos: carry ? [for (final s in _p.slowMos) SlowMoSegment.fromJson(s.toJson())] : null,
+                zooms: carry ? [for (final z in _p.zooms) ZoomSegment.fromJson(z.toJson())] : null,
               );
               Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => EditorScreen(project: project)));
             },
@@ -239,8 +245,8 @@ class _ExportScreenState extends State<ExportScreen> {
                 _withNotes = v;
                 if (!_videoCodecs.contains(_vcodec)) _vcodec = VideoCodec.h264;
               }),
-              title: const Text('Kèm note & slow-mo'),
-              subtitle: Text('${_p.annotations.length} note · ${_p.slowMos.length} đoạn slow-mo'
+              title: const Text('Kèm note, slow-mo & zoom'),
+              subtitle: Text('${_p.annotations.length} note · ${_p.slowMos.length} slow-mo · ${_p.zooms.length} zoom'
                   '${_burnIn && _p.slowMos.isNotEmpty ? ' · dài ${formatMs(_outMs)}' : ''}'),
             ),
           const SizedBox(height: 8),

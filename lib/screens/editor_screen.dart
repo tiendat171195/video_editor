@@ -10,6 +10,7 @@ import 'package:video_player/video_player.dart';
 import '../models/annotation.dart';
 import '../models/media_info.dart';
 import '../models/project.dart';
+import '../models/zoom.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/scrub_frames.dart';
 import '../services/storage.dart';
@@ -51,12 +52,13 @@ Future<void> openEditor(BuildContext context, VideoProject project) =>
 
 /// Creates a project for a freshly produced video, optionally carrying notes.
 VideoProject projectForOutput(String path,
-    {List<Annotation>? annotations, List<SlowMoSegment>? slowMos, String? folder}) {
+    {List<Annotation>? annotations, List<SlowMoSegment>? slowMos, List<ZoomSegment>? zooms, String? folder}) {
   return VideoProject(
     id: newId(),
     videoPath: path,
     name: path.split('/').last,
     folder: folder,
+    zooms: zooms,
     annotations: annotations,
     slowMos: slowMos,
   );
@@ -126,6 +128,9 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
   Offset _pinchStartOffset = Offset.zero;
   Offset _pinchStartFocal = Offset.zero;
   bool _oneFingerActive = false;
+  // Zoom range being recorded for the exported video (its target view).
+  ZoomSegment? _zoomRec;
+  Size _viewSize = Size.zero;
   bool _panningView = false;
   int _lastCommitAt = -100000;
 
@@ -228,6 +233,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       _reportedAt = _clock.elapsedMilliseconds;
     }
     if (v.isCompleted && _slowMoStartMs != null) _finishSlowMo();
+    if (v.isCompleted && _zoomRec != null) _finishZoomRec();
     if (mounted) setState(() {}); // play/pause icon etc.
   }
 
@@ -274,6 +280,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
     if (ctrl.value.isPlaying) {
       await ctrl.pause();
       if (_slowMoStartMs != null) _finishSlowMo();
+      if (_zoomRec != null) _finishZoomRec();
     } else {
       if (_pos.value >= _durationMs - 50) await _seekTo(0);
       await ctrl.play();
@@ -320,6 +327,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
   String _snapshot() => jsonEncode({
         'a': [for (final a in _p.annotations) a.toJson()],
         's': [for (final s in _p.slowMos) s.toJson()],
+        'z': [for (final z in _p.zooms) z.toJson()],
       });
 
   void _restore(String snap) {
@@ -330,6 +338,9 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
     _p.slowMos
       ..clear()
       ..addAll([for (final s in m['s'] as List) SlowMoSegment.fromJson(Map<String, dynamic>.from(s as Map))]);
+    _p.zooms
+      ..clear()
+      ..addAll([for (final z in m['z'] as List? ?? const []) ZoomSegment.fromJson(Map<String, dynamic>.from(z as Map))]);
     if (_selected == null) _selectedId = null;
     _changed();
   }
@@ -526,6 +537,67 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
     }
   }
 
+  /// Starts recording a zoom for the exported video from the current pinch
+  /// view, or finishes the one being recorded.
+  void _toggleZoomRec() {
+    if (_zoomRec != null) {
+      _finishZoomRec();
+      return;
+    }
+    final size = _viewSize;
+    if (_zoom <= 1.05 || size.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Chụm 2 ngón trên video để phóng to vùng cần zoom, rồi bấm "Zoom video"'),
+      ));
+      return;
+    }
+    final c = (size.center(Offset.zero) - _zoomOffset) / _zoom;
+    setState(() {
+      _zoomRec = ZoomSegment(
+        startMs: _pos.value,
+        endMs: _pos.value,
+        scale: _zoom,
+        cx: c.dx / size.width,
+        cy: c.dy / size.height,
+      );
+      // The recorded view takes over from the manual pinch.
+      _zoom = 1;
+      _zoomOffset = Offset.zero;
+    });
+    if (!_isPlaying) _ctrl?.play();
+  }
+
+  void _finishZoomRec() {
+    final z = _zoomRec;
+    if (z == null) return;
+    _zoomRec = null;
+    final end = _pos.value;
+    if (end - z.startMs >= 300) {
+      _checkpoint();
+      z.endMs = end;
+      _p.addZoom(z);
+      _changed();
+    } else {
+      setState(() {});
+    }
+  }
+
+  /// Preview transform (scale, offset) at [ms]: a manual pinch wins,
+  /// otherwise the zoom being recorded or the project's zoom ranges — the
+  /// same curve the export uses.
+  (double, Offset) _viewAt(int ms, Size size) {
+    if (_zoom > 1 || _pinching) return (_zoom, _zoomOffset);
+    final rec = _zoomRec;
+    final v = rec != null ? (scale: rec.scale, cx: rec.cx, cy: rec.cy) : zoomAt(_p.zooms, ms);
+    if (v.scale <= 1.0001) return (1, Offset.zero);
+    return (
+      v.scale,
+      Offset(size.width / 2 - v.cx * size.width * v.scale, size.height / 2 - v.cy * size.height * v.scale),
+    );
+  }
+
+  double get _effZoom => _viewAt(_pos.value, _viewSize).$1;
+
   Annotation? _hitTest(Offset local, Size size) {
     // The selected note wins, even when only its ghost is shown.
     final sel = _selected;
@@ -572,7 +644,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       setState(() {});
     } else if (_scrubbing) {
       // Jog: a full swipe across the video moves ~8 seconds.
-      _jogMs = (_jogMs + delta.dx * _zoom / size.width * 8000).clamp(0, _durationMs.toDouble());
+      _jogMs = (_jogMs + delta.dx * _effZoom / size.width * 8000).clamp(0, _durationMs.toDouble());
       _seekTo(_jogMs.round());
     }
   }
@@ -713,6 +785,8 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
                             annotations: _p.annotations,
                             slowMos: _p.slowMos,
                             pendingSlowMoStartMs: _slowMoStartMs,
+                            zooms: _p.zooms,
+                            pendingZoomStartMs: _zoomRec?.startMs,
                             selectedId: _selectedId,
                             onSeekStart: _scrubStart,
                             onSeek: _seekTo,
@@ -731,7 +805,10 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
     );
   }
 
-  Offset _toVideo(Offset screen) => (screen - _zoomOffset) / _zoom;
+  Offset _toVideo(Offset screen) {
+    final (z, o) = _viewAt(_pos.value, _viewSize);
+    return (screen - o) / z;
+  }
 
   Offset _clampOffset(Offset o, Size size) => Offset(
         o.dx.clamp(size.width - size.width * _zoom, 0.0),
@@ -749,6 +826,12 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       // single finger had just started.
       if (_oneFingerActive) _oneFingerEnd(size, cancel: true);
       if (_clock.elapsedMilliseconds - _lastCommitAt < 350) _undoLast();
+      if (_zoom <= 1) {
+        // Start the pinch from whatever zoom is currently shown.
+        final (z, o) = _viewAt(_pos.value, size);
+        _zoom = z;
+        _zoomOffset = o;
+      }
       _pinching = true;
       _pinchStartZoom = _zoom;
       _pinchStartOffset = _zoomOffset;
@@ -787,7 +870,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       return;
     }
     if (_tool == Tool.hand) {
-      _handPanUpdate(d.focalPointDelta / _zoom, size);
+      _handPanUpdate(d.focalPointDelta / _effZoom, size);
     } else if (_tool != Tool.text) {
       _onPanUpdate(_toVideo(d.localFocalPoint), size);
     }
@@ -826,6 +909,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
         aspectRatio: _canvasAspect,
         child: LayoutBuilder(builder: (context, c) {
           final size = Size(c.maxWidth, c.maxHeight);
+          _viewSize = size;
           final hand = _tool == Tool.hand;
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -847,10 +931,17 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
               fit: StackFit.expand,
               children: [
                 ClipRect(
-                  child: Transform(
-                    transform: Matrix4.identity()
-                      ..translateByDouble(_zoomOffset.dx, _zoomOffset.dy, 0, 1)
-                      ..scaleByDouble(_zoom, _zoom, 1, 1),
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _pos,
+                    builder: (_, pos, child) {
+                      final (z, o) = _viewAt(pos, size);
+                      return Transform(
+                        transform: Matrix4.identity()
+                          ..translateByDouble(o.dx, o.dy, 0, 1)
+                          ..scaleByDouble(z, z, 1, 1),
+                        child: child,
+                      );
+                    },
                     child: Stack(fit: StackFit.expand, children: [
                       VideoPlayer(ctrl),
                       _buildScrubFrame(),
@@ -869,13 +960,23 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
                     ]),
                   ),
                 ),
+                if (_zoomRec != null)
+                  Positioned(
+                    top: 36,
+                    left: 8,
+                    child: _Badge(
+                      color: Colors.red,
+                      icon: Icons.fiber_manual_record,
+                      label: 'Đang ghi zoom ${_zoomRec!.scale.toStringAsFixed(1)}x vào video',
+                    ),
+                  ),
                 if (_zoom > 1)
                   Positioned(
                     bottom: 8,
                     right: 8,
                     child: GestureDetector(
                       onTap: _resetZoom,
-                      child: _Badge(color: Colors.white, icon: Icons.zoom_out_map, label: '${_zoom.toStringAsFixed(1)}x · chạm để về 1x'),
+                      child: _Badge(color: Colors.white, icon: Icons.zoom_out_map, label: '${_zoom.toStringAsFixed(1)}x · chạm để về 1x · "Zoom video" để ghi vào video'),
                     ),
                   ),
                 if (_scrubPrecision != null && _scrubPrecision! < 1)
@@ -1109,9 +1210,20 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
               ),
             ),
             IconButton(tooltip: 'Tốc độ slow-mo', icon: const Icon(Icons.expand_more), onPressed: _pickSlowMoSpeed),
+            FilterChip(
+              avatar: Icon(_zoomRec != null ? Icons.stop_circle : Icons.zoom_in,
+                  size: 18, color: _zoomRec != null ? Colors.red : null),
+              label: Text(_zoomRec != null ? 'Dừng zoom' : 'Zoom video'),
+              tooltip: 'Chụm 2 ngón để chọn vùng, bấm để bắt đầu zoom vào video xuất ra, bấm lại để kết thúc',
+              selected: _zoomRec != null,
+              selectedColor: scheme.errorContainer,
+              showCheckmark: false,
+              onSelected: (_) => _toggleZoomRec(),
+            ),
+            const SizedBox(width: 4),
             Badge(
-              isLabelVisible: _p.annotations.isNotEmpty || _p.slowMos.isNotEmpty,
-              label: Text('${_p.annotations.length + _p.slowMos.length}'),
+              isLabelVisible: _p.hasEdits,
+              label: Text('${_p.annotations.length + _p.slowMos.length + _p.zooms.length}'),
               child: IconButton(tooltip: 'Danh sách note', icon: const Icon(Icons.list_alt), onPressed: _showNotesList),
             ),
           ]),
@@ -1207,6 +1319,30 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
                     onPressed: () {
                       _checkpoint();
                       _p.slowMos.remove(s);
+                      _changed();
+                      setSheet(() {});
+                    },
+                  ),
+                ),
+              const Divider(),
+              ListTile(title: Text('Zoom (${_p.zooms.length})', style: Theme.of(ctx).textTheme.titleMedium)),
+              if (_p.zooms.isEmpty)
+                const ListTile(
+                    subtitle: Text('Chụm 2 ngón để phóng to vùng cần xem, bấm "Zoom video", bấm lại để kết thúc đoạn zoom.')),
+              for (final z in _p.zooms)
+                ListTile(
+                  leading: const Icon(Icons.zoom_in, color: Colors.lightBlue),
+                  title: Text('${z.scale.toStringAsFixed(1)}x'),
+                  subtitle: Text('${formatMs(z.startMs, tenths: true)} → ${formatMs(z.endMs, tenths: true)}'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _seekTo(z.startMs + (z.durationMs ~/ 2));
+                  },
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () {
+                      _checkpoint();
+                      _p.zooms.remove(z);
                       _changed();
                       setSheet(() {});
                     },

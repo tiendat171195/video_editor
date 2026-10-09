@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/annotation.dart';
+import '../models/zoom.dart';
 
 /// Scrubbable timeline showing note time windows and slow-mo ranges.
 ///
@@ -16,6 +17,8 @@ class NoteTimeline extends StatefulWidget {
     required this.slowMos,
     required this.onSeek,
     this.pendingSlowMoStartMs,
+    this.zooms = const [],
+    this.pendingZoomStartMs,
     this.selectedId,
     this.onSeekStart,
     this.onSeekEnd,
@@ -27,6 +30,8 @@ class NoteTimeline extends StatefulWidget {
   final List<Annotation> annotations;
   final List<SlowMoSegment> slowMos;
   final int? pendingSlowMoStartMs;
+  final List<ZoomSegment> zooms;
+  final int? pendingZoomStartMs;
   final String? selectedId;
   final ValueChanged<int> onSeek;
   final VoidCallback? onSeekStart;
@@ -88,6 +93,8 @@ class _NoteTimelineState extends State<NoteTimeline> {
             annotations: widget.annotations,
             slowMos: widget.slowMos,
             pendingSlowMoStartMs: widget.pendingSlowMoStartMs,
+            zooms: widget.zooms,
+            pendingZoomStartMs: widget.pendingZoomStartMs,
             selectedId: widget.selectedId,
             trackColor: Theme.of(context).colorScheme.surfaceContainerHighest,
             playheadColor: Theme.of(context).colorScheme.primary,
@@ -105,6 +112,8 @@ class _TimelinePainter extends CustomPainter {
     required this.annotations,
     required this.slowMos,
     required this.pendingSlowMoStartMs,
+    required this.zooms,
+    required this.pendingZoomStartMs,
     required this.selectedId,
     required this.trackColor,
     required this.playheadColor,
@@ -115,6 +124,8 @@ class _TimelinePainter extends CustomPainter {
   final List<Annotation> annotations;
   final List<SlowMoSegment> slowMos;
   final int? pendingSlowMoStartMs;
+  final List<ZoomSegment> zooms;
+  final int? pendingZoomStartMs;
   final String? selectedId;
   final Color trackColor;
   final Color playheadColor;
@@ -146,6 +157,18 @@ class _TimelinePainter extends CustomPainter {
       canvas.drawRect(
         Rect.fromLTRB(x(pendingSlowMoStartMs!), size.height - 14, x(positionMs), size.height - 8),
         Paint()..color = _slowMoColor.withValues(alpha: 0.5),
+      );
+    }
+
+    // Zoom ranges just above the slow-mo band
+    const zoomColor = Color(0xFF29B6F6);
+    for (final z in zooms) {
+      canvas.drawRect(Rect.fromLTRB(x(z.startMs), size.height - 22, x(z.endMs), size.height - 16), Paint()..color = zoomColor);
+    }
+    if (pendingZoomStartMs != null) {
+      canvas.drawRect(
+        Rect.fromLTRB(x(pendingZoomStartMs!), size.height - 22, x(positionMs), size.height - 16),
+        Paint()..color = zoomColor.withValues(alpha: 0.5),
       );
     }
 

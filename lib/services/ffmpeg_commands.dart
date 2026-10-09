@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../models/annotation.dart';
+import '../models/zoom.dart';
 
 /// Pure builders for ffmpeg argument lists. Kept free of Flutter/plugin
 /// imports so they can be unit tested on the host.
@@ -336,6 +337,40 @@ String atempoChain(double speed) {
   return parts.isEmpty ? 'anull' : parts.join(',');
 }
 
+/// ffmpeg expression for [zoomWeight] of [z] in terms of `it` (the input
+/// timestamp in seconds inside zoompan).
+String zoomWeightExpr(ZoomSegment z) {
+  final r = zoomRampSec(z);
+  final s = z.startMs / 1000.0;
+  final e = z.endMs / 1000.0;
+  if (r <= 0) return 'between(it,${_f(s)},${_f(e)})';
+  final w = 'min(clip((it-${_f(s)})/${_f(r)},0,1),clip((${_f(e)}-it)/${_f(r)},0,1))';
+  return '($w)*($w)*(3-2*($w))';
+}
+
+String _f(double v) => v.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+
+/// A zoompan filter that follows [zoomAt] frame by frame. Output keeps the
+/// frame size [width]x[height] and frame rate [fps].
+String zoomFilter(List<ZoomSegment> zooms, {required int width, required int height, required double fps}) {
+  final z = StringBuffer('1');
+  final cx = StringBuffer('0.5');
+  final cy = StringBuffer('0.5');
+  for (final seg in zooms) {
+    final w = zoomWeightExpr(seg);
+    z.write('+${_f(seg.scale - 1)}*$w');
+    cx.write('+${_f(seg.cx - 0.5)}*$w');
+    cy.write('+${_f(seg.cy - 0.5)}*$w');
+  }
+  // zoompan needs even output dimensions for yuv420p.
+  final ow = width - width % 2;
+  final oh = height - height % 2;
+  // zoompan emits frames at a constant rate, so make the input constant-rate
+  // first; otherwise variable-rate phone footage drifts out of sync.
+  return "fps=${_num(fps)},zoompan=z='$z':x='($cx)*iw-iw/zoom/2':y='($cy)*ih-ih/zoom/2'"
+      ':d=1:s=${ow}x$oh:fps=${_num(fps)}';
+}
+
 /// Builds the export command: overlays every note PNG during its time window
 /// (on the source timeline), then re-times slow-mo ranges and concatenates.
 List<String> buildExportArgs({
@@ -346,6 +381,10 @@ List<String> buildExportArgs({
   required int durationMs,
   required bool hasAudio,
   ConvertOptions options = const ConvertOptions(quality: Quality.high),
+  List<ZoomSegment> zooms = const [],
+  int frameWidth = 0,
+  int frameHeight = 0,
+  double fps = 30,
 }) {
   final o = options;
   final gif = o.container == OutputFormat.gif;
@@ -374,6 +413,13 @@ List<String> buildExportArgs({
     graph.add("[$v][on$i]overlay=${o.x}:${o.y}:eof_action=pass:"
         "enable='between(t,${fmtSec(o.startMs)},${fmtSec(o.endMs)})'[$next]");
     v = next;
+  }
+
+  // Zoom works on the source timeline (like the notes), before re-timing,
+  // so the notes zoom together with the picture just as in the editor.
+  if (zooms.isNotEmpty && frameWidth > 0 && frameHeight > 0) {
+    graph.add('[$v]${zoomFilter(zooms, width: frameWidth, height: frameHeight, fps: fps)}[zm]');
+    v = 'zm';
   }
 
   final ranges = speedRanges(slowMos, durationMs);

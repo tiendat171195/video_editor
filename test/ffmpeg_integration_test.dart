@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_note/models/annotation.dart';
+import 'package:video_note/models/zoom.dart';
 import 'package:video_note/services/ffmpeg_commands.dart';
 
 bool get _hasFfmpeg {
@@ -151,5 +152,23 @@ void main() {
       'stream=width,height:stream_side_data=rotation', '-of', 'csv=p=0', out]);
     // 320x240 rotated 90° displays as 240x320, with no rotation left to apply.
     expect((r.stdout as String).trim(), '240,320');
+  }, skip: skip);
+
+  test('export with zoom, notes and slow motion keeps duration', () async {
+    final out = '${dir.path}/exp_zoom.mp4';
+    final slow = [SlowMoSegment(startMs: 3000, endMs: 3500, speed: 0.5)];
+    await ff(buildExportArgs(
+      input: src,
+      output: out,
+      overlays: [OverlayImage(path: png, x: 10, y: 10, startMs: 0, endMs: 4000)],
+      slowMos: slow,
+      zooms: [ZoomSegment(startMs: 1000, endMs: 3000, scale: 2, cx: 0.7, cy: 0.3)],
+      frameWidth: 320,
+      frameHeight: 240,
+      fps: 30,
+      durationMs: 4000,
+      hasAudio: true,
+    ));
+    expect(await durationOf(out), closeTo(exportedDurationMs(slow, 4000) / 1000, 0.3));
   }, skip: skip);
 }

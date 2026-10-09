@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_note/models/annotation.dart';
+import 'package:video_note/models/zoom.dart';
 import 'package:video_note/services/ffmpeg_commands.dart';
 
 void main() {
@@ -155,5 +156,44 @@ void main() {
     expect(graph, endsWith('paletteuse=dither=bayer:bayer_scale=4[vout]'));
     expect(args, isNot(contains('-c:a')));
     expect(args.sublist(args.length - 3), ['-loop', '0', 'out.gif']);
+  });
+
+  test('zoom filter follows the Dart zoom curve', () {
+    final z = ZoomSegment(startMs: 1000, endMs: 3000, scale: 2, cx: 0.75, cy: 0.25);
+    final f = zoomFilter([z], width: 1081, height: 1920, fps: 30);
+    expect(f, startsWith("fps=30,zoompan=z='1+1*"));
+    expect(f, endsWith(':d=1:s=1080x1920:fps=30'), reason: 'even output size');
+    // Spot-check the Dart side of the same curve.
+    expect(zoomAt([z], 0).scale, 1);
+    expect(zoomAt([z], 2000).scale, closeTo(2, 1e-9));
+    expect(zoomAt([z], 2000).cx, closeTo(0.75, 1e-9));
+    expect(zoomAt([z], 1200).scale, inExclusiveRange(1, 2), reason: 'easing in');
+    expect(zoomAt([z], 3000).scale, 1);
+  });
+
+  test('zoom centre is kept inside the frame', () {
+    final z = ZoomSegment(startMs: 0, endMs: 1000, scale: 4, cx: 0.99, cy: 0.0);
+    expect(z.cx, closeTo(0.875, 1e-9));
+    expect(z.cy, closeTo(0.125, 1e-9));
+  });
+
+  test('export inserts zoom after notes and before slow motion', () {
+    final args = buildExportArgs(
+      input: 'in.mp4',
+      output: 'out.mp4',
+      overlays: const [OverlayImage(path: 'a_%03d.png', x: 0, y: 0, startMs: 0, endMs: 1000)],
+      slowMos: [SlowMoSegment(startMs: 0, endMs: 1000, speed: 0.5)],
+      zooms: [ZoomSegment(startMs: 0, endMs: 1000, scale: 2, cx: 0.5, cy: 0.5)],
+      frameWidth: 640,
+      frameHeight: 360,
+      fps: 30,
+      durationMs: 2000,
+      hasAudio: true,
+    );
+    final graph = args[args.indexOf('-filter_complex') + 1];
+    final ov = graph.indexOf('overlay=');
+    final zp = graph.indexOf('zoompan=');
+    final sp = graph.indexOf('split=');
+    expect(ov < zp && zp < sp, isTrue, reason: graph);
   });
 }
