@@ -9,6 +9,27 @@ import '../models/zoom.dart';
 String fmtSec(int ms) => (ms / 1000.0).toStringAsFixed(3);
 
 // ---------------------------------------------------------------------------
+// Rotation
+//
+// Phone videos are usually stored sideways with a "display matrix" saying how
+// to rotate them. Whether ffmpeg applies it automatically differs between
+// builds, so commands disable autorotate and handle it themselves:
+//  - filter graphs (-filter_complex: export, GIF) drop the display matrix, so
+//    they rotate the frames upright first and everything after works in the
+//    upright frame the editor shows;
+//  - simple re-encodes / stream copies keep the display matrix, so players
+//    rotate those outputs exactly like the source.
+// ---------------------------------------------------------------------------
+
+/// Filter that turns stored frames upright for a clockwise [rotation].
+String uprightFilter(int rotation) => switch (rotation) {
+      90 => 'transpose=clock',
+      180 => 'hflip,vflip',
+      270 => 'transpose=cclock',
+      _ => '',
+    };
+
+// ---------------------------------------------------------------------------
 // Trim
 // ---------------------------------------------------------------------------
 
@@ -26,6 +47,7 @@ List<String> buildTrimArgs({
 }) {
   final args = <String>[
     '-y',
+    if (accurate) '-noautorotate',
     '-ss', fmtSec(startMs),
     '-i', input,
     '-t', fmtSec(endMs - startMs),
@@ -166,15 +188,17 @@ List<String> buildConvertArgs({
   required ConvertOptions o,
   required int durationMs,
   required bool sourceHasAudio,
+  int rotation = 0,
 }) {
-  final args = <String>['-y', '-i', input];
+  final args = <String>['-y', '-noautorotate', '-i', input];
 
   if (o.container == OutputFormat.gif) {
     final fps = o.fps ?? 12;
     final h = o.maxHeight ?? 480;
+    final up = uprightFilter(rotation);
     args.addAll([
       '-filter_complex',
-      "[0:v]fps=${_num(fps)},scale=-2:'min($h,ih)':flags=lanczos,split[a][b];"
+      "[0:v]${up.isEmpty ? '' : '$up,'}fps=${_num(fps)},scale=-2:'min($h,ih)':flags=lanczos,split[a][b];"
           '[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4',
       '-loop', '0',
       output,
@@ -385,17 +409,24 @@ List<String> buildExportArgs({
   int frameWidth = 0,
   int frameHeight = 0,
   double fps = 30,
+  int rotation = 0,
 }) {
   final o = options;
   final gif = o.container == OutputFormat.gif;
   final wantAudio = hasAudio && !gif && o.audioCodec != AudioCodec.none;
-  final args = <String>['-y', '-i', input];
+  final args = <String>['-y', '-noautorotate', '-i', input];
   for (final o in overlays) {
     args.addAll(['-f', 'image2', '-framerate', '$kOverlayFps', '-start_number', '0', '-i', o.path]);
   }
 
   final graph = <String>[];
   var v = '0:v';
+  // Upright first: notes, zoom and frame size are all in the upright frame.
+  final up = uprightFilter(rotation);
+  if (up.isNotEmpty) {
+    graph.add('[0:v]$up[up]');
+    v = 'up';
+  }
   for (var i = 0; i < overlays.length; i++) {
     final o = overlays[i];
     // Hold the last animation frame for the rest of the window, fade it out,

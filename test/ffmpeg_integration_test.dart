@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_note/models/annotation.dart';
+import 'package:video_note/models/media_info.dart';
 import 'package:video_note/models/zoom.dart';
 import 'package:video_note/services/ffmpeg_commands.dart';
 
@@ -147,6 +148,9 @@ void main() {
       slowMos: const [],
       durationMs: 4000,
       hasAudio: true,
+      // ffprobe reports 90 for this file; the app turns that into the
+      // clockwise rotation that makes it upright.
+      rotation: const MediaInfo(durationMs: 0, width: 1, height: 1, rotation: 90).uprightRotation,
     ));
     final r = await Process.run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries',
       'stream=width,height:stream_side_data=rotation', '-of', 'csv=p=0', out]);

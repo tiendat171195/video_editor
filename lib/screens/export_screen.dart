@@ -148,6 +148,7 @@ class _ExportScreenState extends State<ExportScreen> {
 
   Future<void> _run() async {
     final hasAudio = widget.info?.hasAudio ?? true;
+    final rotation = widget.info?.uprightRotation ?? 0;
     final out = await Storage.newOutputPath(_p.videoPath, _burnIn ? 'note' : 'conv', _format.ext);
     List<String> args;
     if (_burnIn) {
@@ -171,6 +172,7 @@ class _ExportScreenState extends State<ExportScreen> {
         frameWidth: widget.frameWidth,
         frameHeight: widget.frameHeight,
         fps: widget.info?.fps ?? 30,
+        rotation: rotation,
       );
     } else {
       args = buildConvertArgs(
@@ -179,6 +181,7 @@ class _ExportScreenState extends State<ExportScreen> {
         o: _options,
         durationMs: widget.durationMs,
         sourceHasAudio: hasAudio,
+        rotation: rotation,
       );
     }
     if (!mounted) return;

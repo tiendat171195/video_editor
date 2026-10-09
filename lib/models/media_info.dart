@@ -38,6 +38,14 @@ class MediaInfo {
 
   double get durationSec => durationMs / 1000.0;
 
+  /// Clockwise rotation (0, 90, 180 or 270) that turns stored frames upright,
+  /// i.e. what ffmpeg's autorotate would apply. ffprobe reports the display
+  /// matrix angle counter-clockwise, hence the sign flip.
+  int get uprightRotation {
+    final r = (((-rotation) % 360) + 360) % 360;
+    return ((r / 90).round() * 90) % 360;
+  }
+
   /// Builds a [MediaInfo] from ffprobe's JSON-like property maps.
   factory MediaInfo.fromProbe({
     required Map<dynamic, dynamic>? format,

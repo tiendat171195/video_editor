@@ -194,6 +194,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       videoPath: _p.videoPath,
       cacheKey: _p.id,
       durationMs: _p.durationMs,
+      rotation: _info?.uprightRotation ?? 0,
     );
     if (mounted) {
       _frames = frames;

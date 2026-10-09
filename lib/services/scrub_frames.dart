@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'ffmpeg_commands.dart';
 import 'ffmpeg_service.dart';
 
 /// Low-resolution JPEG frames of a video, extracted in the background, so
@@ -25,11 +26,12 @@ class ScrubFrames {
     required String videoPath,
     required String cacheKey,
     required int durationMs,
+    int rotation = 0,
   }) async {
     final secs = durationMs / 1000.0;
     final fps = secs <= 0 ? 10.0 : (_maxFrames / secs).clamp(2.0, 15.0).floorToDouble();
     final base = await getTemporaryDirectory();
-    final dir = Directory('${base.path}/scrub_$cacheKey');
+    final dir = Directory('${base.path}/scrub2_$cacheKey');
     final frames = ScrubFrames._(dir, fps);
     final marker = File('${dir.path}/done_${fps.toInt()}');
     if (marker.existsSync()) {
@@ -39,9 +41,12 @@ class ScrubFrames {
     if (dir.existsSync()) await dir.delete(recursive: true);
     await dir.create(recursive: true);
 
+    // Rotate explicitly (see ffmpeg_commands.dart) so frames come out upright
+    // whatever this ffmpeg build's autorotate default is.
+    final up = uprightFilter(rotation);
     frames._job = await FfmpegService.run([
-      '-y', '-i', videoPath, '-an', '-sn',
-      '-vf', 'fps=${fps.toInt()},scale=-2:$_height',
+      '-y', '-noautorotate', '-i', videoPath, '-an', '-sn',
+      '-vf', '${up.isEmpty ? '' : '$up,'}fps=${fps.toInt()},scale=-2:$_height',
       '-q:v', '6',
       '${dir.path}/f_%05d.jpg',
     ], outputDurationMs: durationMs);
