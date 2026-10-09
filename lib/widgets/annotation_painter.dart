@@ -13,7 +13,7 @@ class AnnotationRenderer {
 
   static Offset _px(Offset n, Size s) => Offset(n.dx * s.width, n.dy * s.height);
 
-  static double strokePx(Annotation a, Size s) => math.max(1.5, a.strokeWidth * s.width);
+  static double strokePx(Annotation a, Size s) => a.strokeWidth * s.width;
 
   /// Paints [a] fully drawn, or as it looks at [atMs] when given (partly
   /// revealed while its appear animation runs, fading near its end).
@@ -97,7 +97,8 @@ class AnnotationRenderer {
     return path;
   }
 
-  static double _headLen(double strokeWidth) => strokeWidth * 4 + 8;
+  // Proportional only (no fixed pixels) so preview and export match.
+  static double _headLen(double strokeWidth) => strokeWidth * 6;
 
   static void _arrowHead(Canvas canvas, Offset from, Offset to, Paint paint, double scale) {
     final angle = math.atan2(to.dy - from.dy, to.dx - from.dx);
@@ -111,7 +112,7 @@ class AnnotationRenderer {
   static const _textPadV = 0.25;
 
   static TextPainter textPainter(Annotation a, Size size, Color color, {String? text}) {
-    final fontPx = math.max(10.0, a.fontSize * size.height);
+    final fontPx = a.fontSize * size.height;
     return TextPainter(
       text: TextSpan(
         text: text ?? a.text,
@@ -123,7 +124,7 @@ class AnnotationRenderer {
 
   /// Rectangle (in pixels) covered by a text note, kept inside the frame.
   static Rect textBox(Annotation a, Size size, TextPainter tp) {
-    final fontPx = math.max(10.0, a.fontSize * size.height);
+    final fontPx = a.fontSize * size.height;
     final w = tp.width + fontPx * _textPadH * 2;
     final h = tp.height + fontPx * _textPadV * 2;
     final anchor = _px(a.points.first, size);
@@ -137,7 +138,7 @@ class AnnotationRenderer {
     // The box is laid out for the full text so it doesn't grow while typing.
     final full = textPainter(a, size, color);
     final box = textBox(a, size, full);
-    final fontPx = math.max(10.0, a.fontSize * size.height);
+    final fontPx = a.fontSize * size.height;
 
     // Box pops in over the first 25%, then the text types out.
     final pop = Curves.easeOutBack.transform((progress / 0.25).clamp(0.0, 1.0));

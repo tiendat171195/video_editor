@@ -165,8 +165,12 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       return;
     }
     final ctrl = VideoPlayerController.file(file);
+    // Probe alongside player setup: the frame geometry from ffmpeg is what
+    // the notes canvas must match, so the editor waits for it.
+    final probe = FfmpegService.probe(_p.videoPath).catchError((_) => null);
     try {
       await ctrl.initialize();
+      _info = await probe;
     } catch (e) {
       await ctrl.dispose();
       if (mounted) setState(() => _loadError = 'Không mở được video: $e');
@@ -180,9 +184,6 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
     setState(() => _ctrl = ctrl);
     _p.durationMs = ctrl.value.duration.inMilliseconds;
     _ticker.start();
-
-    final info = await FfmpegService.probe(_p.videoPath);
-    if (mounted) setState(() => _info = info);
 
     final frames = await ScrubFrames.start(
       videoPath: _p.videoPath,
@@ -588,22 +589,24 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
   // ------------------------------------------------------------------ actions
 
   /// Upright pixel size of the video frame, i.e. what ffmpeg filters see
-  /// after applying rotation metadata. Probe dimensions are trusted, but
-  /// their orientation is checked against what the player displays.
+  /// after applying rotation metadata. ffprobe is the source of truth since
+  /// ffmpeg renders the export; the player's report is only a fallback.
   (int, int) _frameSize() {
-    final ctrl = _ctrl!;
-    final aspect = displayAspectRatio(ctrl.value);
     final info = _info;
-    var w = info?.displayWidth ?? 0;
-    var h = info?.displayHeight ?? 0;
-    if (w <= 0 || h <= 0) {
-      final sz = ctrl.value.size;
-      final swap = ctrl.value.rotationCorrection % 180 == 90;
-      w = (swap ? sz.height : sz.width).round();
-      h = (swap ? sz.width : sz.height).round();
+    if (info != null && info.displayWidth > 0 && info.displayHeight > 0) {
+      return (info.displayWidth, info.displayHeight);
     }
-    if ((w > h) != (aspect > 1) && (w - h).abs() > 1) (w, h) = (h, w);
-    return (w, h);
+    final v = _ctrl!.value;
+    final aspect = displayAspectRatio(v);
+    final long = math.max(v.size.width, v.size.height).round();
+    final short = math.min(v.size.width, v.size.height).round();
+    return aspect >= 1 ? (long, short) : (short, long);
+  }
+
+  /// Aspect ratio of the notes canvas; identical to the exported frame.
+  double get _canvasAspect {
+    final (w, h) = _frameSize();
+    return w / h;
   }
 
   Future<void> _openExport() async {
@@ -820,7 +823,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       color: Colors.black,
       alignment: Alignment.center,
       child: AspectRatio(
-        aspectRatio: displayAspectRatio(ctrl.value),
+        aspectRatio: _canvasAspect,
         child: LayoutBuilder(builder: (context, c) {
           final size = Size(c.maxWidth, c.maxHeight);
           final hand = _tool == Tool.hand;

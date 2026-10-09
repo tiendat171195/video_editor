@@ -147,7 +147,9 @@ class _TrimScreenState extends State<TrimScreen> {
                         }
                       },
                       child: AspectRatio(
-                        aspectRatio: displayAspectRatio(ctrl.value),
+                        aspectRatio: widget.info != null && widget.info!.displayHeight > 0
+                            ? widget.info!.displayWidth / widget.info!.displayHeight
+                            : displayAspectRatio(ctrl.value),
                         child: Stack(fit: StackFit.expand, children: [
                           VideoPlayer(ctrl),
                           if (!ctrl.value.isPlaying)
